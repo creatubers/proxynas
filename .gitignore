@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.venv-build/
+
+# Build output
+build/
+dist/
+
+# Local runtime state (holds your own paths, not source)
+proxynas_config.json
+proxynas_registry.json
+backup_gui_config.json
+
+# Diagnostic output
+diagnosticos/
+
+# Bundled binaries: fetch or drop in locally, never committed
+vendor/
+portable/
+
+# Blackmagic RAW SDK-generated artifacts (build your own from the SDK)
+tools/braw_decode/Generated/
