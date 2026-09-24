@@ -59,7 +59,7 @@ def _probe_duration_braw(braw_decode_bin, sdk_dir, filepath):
 
 
 class ProxyRegistry:
-    """Mantiene un registro persistente de archivos de video vistos y reconcilia movimientos."""
+    """Mantiene un registro persistente de archivos de vídeo vistos y reconcilia movimientos."""
 
     def __init__(self, registry_path, ffprobe_bin, braw_decode_bin=None,
                  sdk_dir=None, log_callback=None):
@@ -104,13 +104,13 @@ class ProxyRegistry:
         known_count = len(previous_paths)
         if known_count > 0:
             if len(current_paths) == 0:
-                self.log('Escaneo vacio: no se procesan huerfanos (¿unidad desconectada?).')
+                self.log('Escaneo vacío: no se procesan huérfanos (¿unidad desconectada?).')
                 summary['skipped'] = 'empty_scan'
                 return summary
             if len(current_paths) < known_count * SPARSE_SCAN_RATIO:
                 self.log(
                     f'Escaneo precavido: {len(current_paths)}/{known_count} archivos. '
-                    f'No se procesan huerfanos.'
+                    f'No se procesan huérfanos.'
                 )
                 summary['skipped'] = 'sparse_scan'
                 now = int(time.time())
@@ -159,7 +159,7 @@ class ProxyRegistry:
                 if self._quarantine_proxy(entry):
                     summary['orphans'] += 1
                     self.log(
-                        f'Proxy huerfano: {os.path.basename(entry.get("proxy_path", ""))} '
+                        f'Proxy huérfano: {os.path.basename(entry.get("proxy_path", ""))} '
                         f'-> _orphan/ (sin source tras {ORPHAN_THRESHOLD_SCANS} escaneos)'
                     )
                 entries.pop(path, None)

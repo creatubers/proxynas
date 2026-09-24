@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 Proxynas - Proxies Blackmagic RAW y backup AV1 portable
 Compatible con Windows y Linux.
@@ -36,8 +36,8 @@ from proxyregistry import ProxyRegistry
 AUDIO_EXTENSIONS = {'.wav', '.flac'}
 IMAGE_EXTENSIONS = {'.tiff', '.rw2', '.cr2', '.arw'}
 BRAW_EXTENSIONS = {'.braw'}
-# El aviso al elegir carpeta no baja mas de aqui: las tarjetas de camara son
-# poco profundas y asi no se recorre entero un archivo grande (solo afecta al aviso,
+# El aviso al elegir carpeta no baja más de aquí: las tarjetas de camara son
+# poco profundas y así no se recorre entero un archivo grande (solo afecta al aviso,
 # no a los gates de proxy/backup, que siguen mirando el arbol completo).
 BRAW_SCAN_DEPTH = 3
 VIDEO_EXTENSIONS = {'.mov', '.webm', '.avi', '.mp4', '.mkv', '.mpg', '.mpeg', '.wmv', '.mts'} | BRAW_EXTENSIONS
@@ -49,7 +49,7 @@ IS_LINUX = platform.system() == 'Linux'
 
 # ffmpeg, ffprobe y braw_decode son aplicaciones de consola: en un ejecutable
 # sin consola cada llamada abre una ventana que parpadea. Todos los procesos
-# hijos pasan por Popen, asi que se parchea ahi una sola vez en lugar de
+# hijos pasan por Popen, así que se parchea ahi una sola vez en lugar de
 # repetir creationflags en cada subprocess.run del proyecto.
 def _hide_child_console_windows():
     original_init = subprocess.Popen.__init__
@@ -72,16 +72,23 @@ PORTABLE_BIN_DIR = os.path.join(SCRIPT_DIR, 'portable', 'bin')
 PORTABLE_SDK_DIR = os.path.join(SCRIPT_DIR, 'portable', 'sdk')
 FFMPEG_DOWNLOAD_URL = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip'
 FFMPEG_MIN_BUILD_DATE = '20260819'
-# braw_decode.exe es un binario de Windows, asi que el SDK util es el de Windows.
+# braw_decode.exe es un binario de Windows, así que el SDK útil es el de Windows.
 BRAW_SDK_URL = 'https://www.blackmagicdesign.com/support/latest-download/braw-sdk/windows'
 BRAW_SDK_HELP = (
-    'El SDK de Blackmagic RAW no se puede distribuir con Proxynas, asi que hay que\n'
+    'El SDK de Blackmagic RAW no se puede distribuir con Proxynas, así que hay que\n'
     'descargarlo una vez desde la web oficial de Blackmagic:\n\n'
     f'  {BRAW_SDK_URL}\n\n'
-    '  1. Abre esa pagina y baja el SDK para Windows.\n'
-    '  2. Vuelve a Proxynas y pulsa "Importar SDK BRAW (zip)".\n'
-    '  3. Elige el zip descargado: Proxynas copia los ficheros necesarios.\n\n'
-    'Sin SDK todo sigue funcionando salvo los ficheros .braw.'
+    '  1. Abre esa página y descarga el SDK para Windows.\n'
+    '  2. Vuelve a Proxynas y pulsa «Importar SDK BRAW (zip)».\n'
+    '  3. Elige el zip descargado: Proxynas copiará los ficheros necesarios.\n\n'
+    'Sin el SDK, todo sigue funcionando excepto los ficheros .braw.'
+)
+
+FFMPEG_HELP = (
+    'Proxynas descarga FFmpeg automáticamente al arrancar, así que lo más\n'
+    'probable es que esa descarga no llegara a completarse.\n\n'
+    'Cierra y vuelve a abrir Proxynas para reintentarla. Si el problema\n'
+    'continúa, comprueba la conexión a Internet.'
 )
 
 
@@ -457,7 +464,7 @@ def select_av1_encoder():
 
 
 def get_ffmpeg_video_encoders():
-    """Devuelve los nombres de encoders de video que expone ffmpeg."""
+    """Devuelve los nombres de encoders de vídeo que expone ffmpeg."""
     try:
         output = subprocess.check_output(
             [FFMPEG_BIN, '-hide_banner', '-encoders'],
@@ -493,7 +500,7 @@ def gpu_vendor_order(gpu_name):
 
 
 def encoder_options(encoder, bitrate='1500k', probe=False):
-    """Opciones especificas por familia de encoder."""
+    """Opciones específicas por familia de encoder."""
     if encoder.endswith('_nvenc'):
         pix_fmt = 'p010le' if encoder.startswith(('av1_', 'hevc_')) else 'yuv420p'
         return [
@@ -556,7 +563,7 @@ def test_encoder(encoder):
         return True, ''
     except subprocess.CalledProcessError as e:
         detail = (e.stderr or '').strip().splitlines()
-        return False, detail[-1] if detail else f'ffmpeg codigo {e.returncode}'
+        return False, detail[-1] if detail else f'ffmpeg código {e.returncode}'
     except Exception as e:
         return False, str(e)
 
@@ -630,7 +637,7 @@ def select_encoder_for_preset(preset, capabilities=None):
 
 
 def select_av1_encoder():
-    """Compatibilidad con codigo antiguo: selecciona AV1 hardware validado."""
+    """Compatibilidad con código antiguo: selecciona AV1 hardware validado."""
     caps = detect_encoder_capabilities()
     return select_encoder_for_preset(CODEC_AV1_HW, caps), caps.get('gpu', '')
 
@@ -644,9 +651,9 @@ def check_ffmpeg():
 
 
 def check_braw_tools():
-    """Verifica el decodificador BRAW y el SDK portable."""
+    """Verifica el decodificador BRAW y el SDK portable (no FFmpeg)."""
     try:
-        braw_proxy.check_portable_tools()
+        braw_proxy.check_braw_tools()
         return True, None
     except FileNotFoundError as exc:
         return False, str(exc)
@@ -707,7 +714,7 @@ def remove_file_quietly(path):
 
 def promote_partial_output(partial_path, output_path):
     if not os.path.exists(partial_path) or os.path.getsize(partial_path) == 0:
-        raise RuntimeError(f'Salida temporal invalida: {partial_path}')
+        raise RuntimeError(f'Salida temporal inválida: {partial_path}')
     os.replace(partial_path, output_path)
 
 
@@ -854,7 +861,7 @@ class BackupProcessor:
                     Path(dir_out).mkdir(parents=True, exist_ok=True)
                     try:
                         if not is_source_ready(abspath_in, lambda: self.cancelled):
-                            self.log(f'  En transferencia, se reintentara mas tarde: {f}')
+                            self.log(f'  En transferencia, se reintentará más tarde: {f}')
                             self.stats['skipped'] += 1
                             continue
                         process_function(abspath_in, dir_out, prefix, suffix)
@@ -1042,10 +1049,10 @@ class BackupProcessor:
         decoder_return = decoder.wait()
         if decoder_return != 0:
             remove_file_quietly(partial_out)
-            raise RuntimeError(f"braw_decode finalizo con codigo {decoder_return}: {decoder_stderr.strip()}")
+            raise RuntimeError(f"braw_decode finalizó con código {decoder_return}: {decoder_stderr.strip()}")
         if ffmpeg.returncode != 0:
             remove_file_quietly(partial_out)
-            raise RuntimeError(f"ffmpeg finalizo con codigo {ffmpeg.returncode}: {(ffmpeg_stderr or '').strip()}")
+            raise RuntimeError(f"ffmpeg finalizó con código {ffmpeg.returncode}: {(ffmpeg_stderr or '').strip()}")
         promote_partial_output(partial_out, abspath_out)
 
     def get_braw_backup_info(self, abspath_in):
@@ -1088,7 +1095,7 @@ class BackupProcessor:
             self.stats['skipped'] += 1
             return
 
-        # Detectar codec actual
+        # Detectar códec actual
         codec_output = ""
         pixel_format = ""
         try:
@@ -1199,12 +1206,12 @@ class BackupProcessor:
             raise
         except subprocess.CalledProcessError as e:
             detail = (e.stderr or '').strip()
-            self.log(f"  ✗ Error codec {target_codec} (codigo {e.returncode}): {detail or 'sin detalle de FFmpeg'}")
+            self.log(f"  ✗ Error de códec {target_codec} (código {e.returncode}): {detail or 'sin detalle de FFmpeg'}")
             remove_file_quietly(partial_out)
             self._copy_original_video_fallback(abspath_in, dir_out, prefix, suffix)
             self.stats['errors'] += 1
         except Exception as e:
-            self.log(f"  ✗ Error codec {target_codec}: {e}")
+            self.log(f"  ✗ Error de códec {target_codec}: {e}")
             remove_file_quietly(partial_out)
             self._copy_original_video_fallback(abspath_in, dir_out, prefix, suffix)
             self.stats['errors'] += 1
@@ -1250,7 +1257,7 @@ class BackupProcessor:
                     abspath_out = os.path.join(dir_out, f)
 
                     if not is_source_ready(abspath_in, lambda: self.cancelled):
-                        self.log(f'  En transferencia, se reintentara mas tarde: {f}')
+                        self.log(f'  En transferencia, se reintentará más tarde: {f}')
                         self.stats['skipped'] += 1
                         self.progress()
                         continue
@@ -1483,7 +1490,7 @@ class BackupApp:
         }
 
     def _apply_hidpi_indicators(self):
-        """Layout plano para check/radio sin sombra inferior; usa indicadores HiDPI si PIL esta disponible."""
+        """Layout plano para check/radio sin sombra inferior; usa indicadores HiDPI si PIL está disponible."""
         check_elem = 'Checkbutton.indicator'
         radio_elem = 'Radiobutton.indicator'
         indicator_size = 18
@@ -1820,7 +1827,7 @@ class BackupApp:
             if os.path.isdir(candidate):
                 self._set_watch_folder(candidate)
                 return
-        self.proxy_status_var.set('Lo que has soltado no parece una carpeta valida.')
+        self.proxy_status_var.set('Lo que has soltado no parece una carpeta válida.')
 
     def _browse_watch_folder(self):
         folder = filedialog.askdirectory(title='Seleccionar carpeta vigilada')
@@ -1831,17 +1838,17 @@ class BackupApp:
         folder = os.path.abspath(folder)
         self.watch_folder_var.set(folder)
         self.src_var.set(folder)
-        self.proxy_status_var.set('Carpeta lista. Puedes crear proxies o activar modo live.')
+        self.proxy_status_var.set('Carpeta lista. Puedes crear proxies o activar el modo live.')
         self._persist_config()
         self._draw_drop_zone()
-        # os.walk sobre una carpeta de red puede tardar, asi que se busca en segundo plano.
+        # os.walk sobre una carpeta de red puede tardar, así que se busca en segundo plano.
         threading.Thread(target=self._check_braw_sdk_for_folder, args=(folder,), daemon=True).start()
 
     def _build_proxy_panel(self, parent):
         parent.columnconfigure(0, weight=1)
         ttk.Label(
             parent,
-            text='Crea proxies para material profesional detectado en la carpeta vigilada. Ahora: Blackmagic RAW y ProRes.',
+            text='Crea proxies para el material profesional detectado en la carpeta vigilada: ahora, Blackmagic RAW y ProRes.',
             style='Body.TLabel',
         ).grid(row=0, column=0, sticky='ew')
 
@@ -1902,7 +1909,7 @@ class BackupApp:
 
         video_codec_box = ttk.Frame(codec_box, style='Card.TFrame')
         video_codec_box.grid(row=0, column=0, sticky='nw', padx=(0, 18))
-        ttk.Label(video_codec_box, text='Codec de backup', style='Muted.TLabel').grid(row=0, column=0, sticky='w', pady=(0, 4))
+        ttk.Label(video_codec_box, text='Códec de backup', style='Muted.TLabel').grid(row=0, column=0, sticky='w', pady=(0, 4))
         for row, preset in enumerate((CODEC_AV1_HW, CODEC_HEVC_HW, CODEC_HEVC_SW), start=1):
             rb = ttk.Radiobutton(
                 video_codec_box,
@@ -1914,7 +1921,7 @@ class BackupApp:
             rb.grid(row=row, column=0, sticky='w', pady=1)
             rb.config(state='disabled')
             self.codec_radio_buttons[preset] = rb
-        self.codec_status_label = ttk.Label(video_codec_box, text='Detectando codecs...', style='Muted.TLabel', wraplength=280, justify='left')
+        self.codec_status_label = ttk.Label(video_codec_box, text='Detectando códecs...', style='Muted.TLabel', wraplength=280, justify='left')
         self.codec_status_label.grid(row=4, column=0, sticky='w', pady=(6, 0))
 
         audio_codec_box = ttk.Frame(codec_box, style='Card.TFrame')
@@ -2053,18 +2060,18 @@ class BackupApp:
             messagebox.showinfo(APP_NAME, 'SDK BRAW importado correctamente.')
 
     def _offer_braw_sdk(self, missing=None):
-        """Guia para instalar el SDK, que no se puede redistribuir con la app."""
-        detail = f'Faltan las herramientas BRAW:\n{missing}\n\n' if missing else ''
+        """Guía para instalar el SDK, que no se puede redistribuir con la app."""
+        detail = f'Para trabajar con BRAW, falta lo siguiente:\n{missing}\n\n' if missing else ''
         if messagebox.askyesno(
             APP_NAME,
             detail + BRAW_SDK_HELP
-            + '\n\n¿Abrir la pagina de descarga del SDK en el navegador?',
+            + '\n\n¿Quieres abrir la página de descarga del SDK en el navegador?',
         ):
             webbrowser.open(BRAW_SDK_URL)
         if messagebox.askyesno(
             APP_NAME,
-            'Si ya tienes el zip del SDK descargado, Proxynas puede copiar los\n'
-            'ficheros necesarios por ti.\n\n¿Importar el zip ahora?',
+            'Si ya tienes el zip del SDK descargado, Proxynas puede copiar por ti los\n'
+            'ficheros necesarios.\n\n¿Quieres importarlo ahora?',
         ):
             self._import_braw_sdk()
 
@@ -2085,7 +2092,11 @@ class BackupApp:
             return
         root_dir = self.watch_folder_var.get().strip()
         if not root_dir or not os.path.isdir(root_dir):
-            messagebox.showerror('Error', 'Selecciona una carpeta vigilada valida.')
+            messagebox.showerror('Error', 'Selecciona una carpeta vigilada válida.')
+            return
+        ff_ok, ff_missing = check_ffmpeg()
+        if not ff_ok:
+            messagebox.showerror(APP_NAME, f'No se encuentra {ff_missing}.\n\n{FFMPEG_HELP}')
             return
         if contains_files(root_dir, BRAW_EXTENSIONS):
             ok, missing = check_braw_tools()
@@ -2106,7 +2117,7 @@ class BackupApp:
                 if summary.get('moves') or summary.get('orphans') or summary.get('news'):
                     self._log(
                         f"Reconciliado: {summary['moves']} movidos, "
-                        f"{summary['orphans']} huerfanos, "
+                        f"{summary['orphans']} huérfanos, "
                         f"{summary['news']} nuevos."
                     )
             except Exception as exc:
@@ -2273,7 +2284,7 @@ class BackupApp:
                 text=f"Seleccionado: {CODEC_PRESET_LABELS.get(selected, selected)} ({selected_data.get('encoder')})"
             )
         else:
-            self.codec_status_label.config(text='Sin codecs de conversion disponibles; se copiara el video original.')
+            self.codec_status_label.config(text='No hay códecs de conversión disponibles; se copiará el vídeo original.')
 
         if status_text:
             self.info_label.config(text=status_text)
@@ -2310,7 +2321,7 @@ class BackupApp:
                 rb.config(state='normal' if data.get('available') else 'disabled')
         if hasattr(self, 'codec_status_label'):
             if codec_state == 'disabled':
-                self.codec_status_label.config(text='Conversion de video desactivada para este modo.')
+                self.codec_status_label.config(text='Conversión de vídeo desactivada para este modo.')
             elif self.encoder_capabilities:
                 selected = self.codec_preset_var.get()
                 data = self.encoder_capabilities.get('presets', {}).get(selected, {})
@@ -2397,7 +2408,7 @@ class BackupApp:
         if needs_ffmpeg:
             ff_ok, ff_missing = check_ffmpeg()
             if not ff_ok:
-                messagebox.showerror("Error", f"{ff_missing} no encontrado. Instálalo y añádelo al PATH.")
+                messagebox.showerror("Error", f'No se encuentra {ff_missing}.\n\n{FFMPEG_HELP}')
                 return
 
         if self.transcode_var.get() and mode in ('todo', 'video'):
@@ -2412,7 +2423,7 @@ class BackupApp:
                 return
 
         if needs_magick and not check_magick():
-            messagebox.showerror("Error", "ImageMagick (magick) no encontrado. Instálalo y añádelo al PATH.")
+            messagebox.showerror("Error", "No se encuentra ImageMagick (magick). Instálalo y añádelo al PATH.")
             return
 
         if self.transcode_var.get() and mode in ('todo', 'video') and contains_files(src, BRAW_EXTENSIONS):
@@ -2465,7 +2476,7 @@ class BackupApp:
         encoder = select_encoder_for_preset(preset, self.encoder_capabilities) if transcode else None
         self._log(f"Modo: {mode} | Transcodificar: {'Sí' if transcode else 'No'}")
         if transcode and mode in ('todo', 'video'):
-            self._log(f"Codec backup: {CODEC_PRESET_LABELS.get(preset, preset)} ({encoder})")
+            self._log(f"Códec de backup: {CODEC_PRESET_LABELS.get(preset, preset)} ({encoder})")
         if mode in ('todo', 'audio_img'):
             audio_preset = self.audio_preset_var.get()
             self._log(f"Audio: {AUDIO_PRESET_LABELS.get(audio_preset, audio_preset)}")
@@ -2559,7 +2570,7 @@ def run_cli():
     """Modo CLI compatible con el script original."""
     if len(sys.argv) < 3:
         print("Uso: Proxynas.py --cli <directorio_origen> <directorio_destino> [--no-transcode]")
-        print("     Proxynas.py                    (modo GUI)")
+        print("     Proxynas.py                    (interfaz gráfica)")
         sys.exit(1)
 
     args = sys.argv[1:]
@@ -2581,7 +2592,7 @@ def run_cli():
 
     ff_ok, ff_missing = check_ffmpeg()
     if not ff_ok:
-        print(f"Error: {ff_missing} no encontrado en PATH.")
+        print(f"Error: no se encuentra {ff_missing} en PATH.")
         sys.exit(1)
 
     p = BackupProcessor(src_dir, dst_dir, backup_braw_originals='--include-braw-originals' in sys.argv)

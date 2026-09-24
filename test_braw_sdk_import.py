@@ -92,14 +92,14 @@ def check_scan_depth():
 
         os.remove(shallow)
         assert not backup_gui.contains_files(tmp, backup_gui.BRAW_EXTENSIONS, max_depth=backup_gui.BRAW_SCAN_DEPTH), \
-            'no deberia bajar hasta el fichero hondo'
+            'no debería bajar hasta el fichero hondo'
         assert backup_gui.contains_files(tmp, backup_gui.BRAW_EXTENSIONS), \
             'el escaneo completo si debe encontrarlo'
 
 
 
 def fake_pe(machine):
-    """PE minimo con la arquitectura pedida (0x8664 = x64, 0xAA64 = ARM64)."""
+    """PE mínimo con la arquitectura pedida (0x8664 = x64, 0xAA64 = ARM64)."""
     data = bytearray(0x100)
     struct.pack_into("<I", data, 0x3C, 0x80)
     struct.pack_into("<H", data, 0x84, machine)
@@ -124,7 +124,7 @@ def check_sdk_tree_picker():
         put("Blackmagic RAW Player/BlackmagicRawAPI/BlackmagicRawAPI.dll", 0x8664)
 
         chosen = pg.sdk_folder_in_tree(tmp)
-        assert chosen, "deberia encontrar la carpeta con el DLL x64"
+        assert chosen, "debería encontrar la carpeta con el DLL x64"
         assert "arm" not in chosen.lower(), chosen
         assert chosen.endswith(os.path.join("Win", "Libraries")), chosen
 
@@ -133,7 +133,62 @@ def check_sdk_tree_picker():
         os.makedirs(os.path.dirname(arm_path))
         with open(arm_path, "wb") as handle:
             handle.write(fake_pe(0xAA64))
-        assert pg.sdk_folder_in_tree(solo_arm) is None, "con solo ARM no hay carpeta valida"
+        assert pg.sdk_folder_in_tree(solo_arm) is None, "con solo ARM no hay carpeta válida"
+
+
+def check_braw_gate():
+    """El aviso de BRAW no debe hablar de FFmpeg, y tampoco ofrecer el SDK."""
+    import backup_gui
+
+    with tempfile.TemporaryDirectory() as tmp:
+        sdk_dir = os.path.join(tmp, "sdk")
+        bin_dir = os.path.join(tmp, "bin")
+        os.makedirs(sdk_dir)
+        os.makedirs(bin_dir)
+
+        names = ("BIN_DIR", "SDK_DIR", "BRAW_DECODE", "FFMPEG", "FFPROBE")
+        real = {name: getattr(proxygenerator, name) for name in names}
+        try:
+            proxygenerator.BIN_DIR = bin_dir
+            proxygenerator.SDK_DIR = sdk_dir
+            proxygenerator.BRAW_DECODE = os.path.join(bin_dir, "braw_decode.exe")
+            proxygenerator.FFMPEG = os.path.join(bin_dir, "ffmpeg.exe")
+            proxygenerator.FFPROBE = os.path.join(bin_dir, "ffprobe.exe")
+
+            ok, missing = backup_gui.check_braw_tools()
+            assert not ok
+            assert "FFmpeg" not in missing and "FFprobe" not in missing, missing
+            assert "Decodificador BRAW portable" in missing, missing
+
+            with open(proxygenerator.BRAW_DECODE, "wb") as handle:
+                handle.write(b"decoder")
+            ok, missing = backup_gui.check_braw_tools()
+            assert not ok and "BlackmagicRawAPI.dll" in missing, missing
+
+            with open(os.path.join(sdk_dir, "BlackmagicRawAPI.dll"), "wb") as handle:
+                handle.write(b"dll")
+            assert backup_gui.check_braw_tools() == (True, None)
+        finally:
+            for name, value in real.items():
+                setattr(proxygenerator, name, value)
+
+    captured = []
+    real_ask = backup_gui.messagebox.askyesno
+    real_open = backup_gui.webbrowser.open
+    try:
+        backup_gui.messagebox.askyesno = lambda title, message, **kw: captured.append(message) or False
+        backup_gui.webbrowser.open = lambda url: None
+        stub = types.SimpleNamespace(_import_braw_sdk=lambda: None)
+        backup_gui.BackupApp._offer_braw_sdk(stub, "No se encuentra el SDK BRAW portable: X")
+        assert captured, "deberia pedir algo al usuario"
+        message = captured[0]
+        assert "FFmpeg" not in message, message
+        assert "No se encuentra el SDK BRAW portable" in message, message
+        assert "blackmagicdesign.com" in message, message
+        assert "importar" in captured[1].lower(), captured[1]
+    finally:
+        backup_gui.messagebox.askyesno = real_ask
+        backup_gui.webbrowser.open = real_open
 
 
 def main():
@@ -171,11 +226,12 @@ def main():
         except ValueError:
             pass
         else:
-            raise AssertionError('un zip sin DLL del SDK deberia dar ValueError')
+            raise AssertionError('un zip sin DLL del SDK debería dar ValueError')
 
     check_folder_warning()
     check_scan_depth()
     check_sdk_tree_picker()
+    check_braw_gate()
     print('test_braw_sdk_import: OK')
 
 

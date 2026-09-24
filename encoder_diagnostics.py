@@ -289,7 +289,7 @@ def collect_system_info(log):
 
 def write_summary(path, report):
     lines = [
-        "Proxynas - resumen de diagnostico",
+        "Proxynas - resumen de diagnóstico",
         f"Equipo: {report['system']['platform']}",
         f"GPU: {report['system']['gpu_detected_by_app']}",
         "",
@@ -321,7 +321,7 @@ def main():
     log_path = os.path.join(report_dir, "ffmpeg_completo.log")
     report = {"system": {}, "backup": {}, "proxy": {}, "braw": {}}
 
-    print("Proxynas - diagnostico de encoders")
+    print("Proxynas - diagnóstico de encoders")
     print("Puede tardar varios minutos. Los fallos de GPU no instalada son normales.\n")
     with open(log_path, "w", encoding="utf-8", errors="replace") as log:
         report["system"] = collect_system_info(log)

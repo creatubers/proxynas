@@ -41,15 +41,19 @@ def proxy_extension_for(source_path):
 
 def require_file(path, label):
     if not os.path.isfile(path):
-        raise FileNotFoundError(f"{label} no encontrado: {path}")
+        raise FileNotFoundError(f"No se encuentra el {label}: {path}")
+
+
+def check_braw_tools(require_braw=True):
+    require_file(BRAW_DECODE, "Decodificador BRAW portable")
+    if require_braw:
+        require_file(os.path.join(SDK_DIR, "BlackmagicRawAPI.dll"), "SDK BRAW portable")
 
 
 def check_portable_tools(require_braw=True):
     require_file(FFMPEG, "FFmpeg portable")
     require_file(FFPROBE, "FFprobe portable")
-    if require_braw:
-        require_file(BRAW_DECODE, "Decodificador BRAW portable")
-        require_file(os.path.join(SDK_DIR, "BlackmagicRawAPI.dll"), "SDK BRAW portable")
+    check_braw_tools(require_braw)
     get_proxy_encoder()
 
 
@@ -72,7 +76,7 @@ def braw_sdk_entries(zip_names):
     """Elige un fichero por nombre dentro del zip del SDK.
 
     El zip oficial trae cabeceras, libs y varias arquitecturas, y su estructura
-    cambia entre versiones, asi que se busca por nombre de fichero (prefiriendo
+    cambia entre versiones, así que se busca por nombre de fichero (prefiriendo
     x64) en lugar de por rutas fijas.
     """
     wanted_dlls = tuple(name.lower() for name in BRAW_SDK_DLLS)
@@ -148,10 +152,10 @@ def _import_from_installer_zip(archive):
         done = subprocess.run(["msiexec", "/a", msi, "/qn", f"TARGETDIR={extracted}"],
                               capture_output=True)
         if done.returncode != 0:
-            raise ValueError(f"msiexec no pudo extraer el SDK (codigo {done.returncode}).")
+            raise ValueError(f"msiexec no pudo extraer el SDK (código {done.returncode}).")
         folder = sdk_folder_in_tree(extracted)
         if not folder:
-            raise ValueError("El instalador no traia un BlackmagicRawAPI.dll x64.")
+            raise ValueError("El instalador no traía un BlackmagicRawAPI.dll x64.")
         copied = _copy_wanted_dlls(folder)
     return copied, {os.path.basename(path).lower(): path for path in copied}
 
@@ -239,7 +243,7 @@ def test_proxy_encoder(encoder):
         return True, ""
     except subprocess.CalledProcessError as exc:
         detail = (exc.stderr or "").strip().splitlines()
-        return False, detail[-1] if detail else f"ffmpeg codigo {exc.returncode}"
+        return False, detail[-1] if detail else f"ffmpeg código {exc.returncode}"
     except Exception as exc:
         return False, str(exc)
 
@@ -316,15 +320,15 @@ def remove_partial_output(output_path):
 
 def promote_partial_output(partial_path, output_path):
     if not os.path.exists(partial_path) or os.path.getsize(partial_path) == 0:
-        raise RuntimeError(f"Salida temporal invalida: {partial_path}")
+        raise RuntimeError(f"Salida temporal inválida: {partial_path}")
     os.replace(partial_path, output_path)
 
 
 def process_error_message(label, returncode, output_lines):
     tail = "\n".join(output_lines[-12:]).strip()
     if tail:
-        return f"{label} finalizo con codigo {returncode}:\n{tail}"
-    return f"{label} finalizo con codigo {returncode}"
+        return f"{label} finalizó con código {returncode}:\n{tail}"
+    return f"{label} finalizó con código {returncode}"
 
 
 def get_color_args(video_path):
@@ -568,7 +572,7 @@ def create_braw_proxy(source_path, output_path):
         print(decoder_errors)
     if decoder_return != 0:
         remove_partial_output(output_path)
-        raise RuntimeError(f"braw_decode finalizo con codigo {decoder_return}")
+        raise RuntimeError(f"braw_decode finalizó con código {decoder_return}")
     if ffmpeg_return != 0:
         remove_partial_output(output_path)
         raise RuntimeError(process_error_message("ffmpeg", ffmpeg_return, ffmpeg_output))
@@ -639,13 +643,13 @@ def find_video_files(root_dir):
 
 
 def run_proxy_creation(root_dir):
-    print(f"\nBuscando videos en: {root_dir}")
+    print(f"\nBuscando vídeos en: {root_dir}")
     video_files = find_video_files(root_dir)
     if not video_files:
-        print("No se encontraron videos para analizar.")
+        print("No se encontraron vídeos para analizar.")
         return
 
-    # El material sin .braw no necesita el SDK, asi que solo se exige si hay alguno.
+    # El material sin .braw no necesita el SDK, así que solo se exige si hay alguno.
     check_portable_tools(
         require_braw=any(path.lower().endswith(".braw") for path in video_files)
     )
@@ -665,10 +669,10 @@ def run_proxy_creation(root_dir):
         jobs.append((source_path, output_path))
 
     if not jobs:
-        print("\nTodo actualizado. No hay videos nuevos que procesar.")
+        print("\nTodo actualizado. No hay vídeos nuevos que procesar.")
         return
 
-    print(f"\nSe procesaran {len(jobs)} videos nuevos.")
+    print(f"\nSe procesarán {len(jobs)} vídeos nuevos.")
     for index, (source_path, output_path) in enumerate(jobs, start=1):
         print("-" * 70)
         print(f"TRABAJO {index}/{len(jobs)}: {os.path.basename(source_path)}")
@@ -681,14 +685,14 @@ def run_proxy_creation(root_dir):
                 create_braw_proxy(source_path, output_path)
             else:
                 create_standard_proxy(source_path, output_path)
-            print(f"\nEXITO: Proxy creado para {os.path.basename(source_path)}")
+            print(f"\nÉXITO: proxy creado para {os.path.basename(source_path)}")
         except Exception as exc:
             remove_partial_output(output_path)
             if os.path.exists(output_path):
                 os.remove(output_path)
             print(f"\nERROR: {exc}")
 
-    print("\n--- Proceso de creacion de proxies finalizado ---")
+    print("\n--- Proceso de creación de proxies finalizado ---")
 
 
 if __name__ == "__main__":
@@ -697,5 +701,5 @@ if __name__ == "__main__":
         print(f"Directorio de trabajo: {SCRIPT_DIR}")
         run_proxy_creation(SCRIPT_DIR)
     except Exception as exc:
-        print(f"\nERROR CRITICO: {exc}")
+        print(f"\nERROR CRÍTICO: {exc}")
         sys.exit(1)
