@@ -21,3 +21,7 @@ portable/
 
 # Blackmagic RAW SDK-generated artifacts (build your own from the SDK)
 tools/braw_decode/Generated/
+
+# Capturas sueltas en la raiz (el icono esta trackeado aparte)
+/*.png
+!/proxynas.png
