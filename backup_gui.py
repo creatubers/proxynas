@@ -72,8 +72,9 @@ FFMPEG_MIN_BUILD_DATE = '20260819'
 BRAW_SDK_URL = 'https://www.blackmagicdesign.com/support/latest-download/braw-sdk/windows'
 BRAW_SDK_HELP = (
     'El SDK de Blackmagic RAW no se puede distribuir con Proxynas, asi que hay que\n'
-    'descargarlo una vez desde Blackmagic:\n\n'
-    '  1. Abre la pagina de descarga y baja el SDK para Windows.\n'
+    'descargarlo una vez desde la web oficial de Blackmagic:\n\n'
+    f'  {BRAW_SDK_URL}\n\n'
+    '  1. Abre esa pagina y baja el SDK para Windows.\n'
     '  2. Vuelve a Proxynas y pulsa "Importar SDK BRAW (zip)".\n'
     '  3. Elige el zip descargado: Proxynas copia los ficheros necesarios.\n\n'
     'Sin SDK todo sigue funcionando salvo los ficheros .braw.'
@@ -1682,6 +1683,8 @@ class BackupApp:
 
         self._build_proxy_panel(proxy_card.body)
         self._build_backup_panel(backup_card.body)
+        # El SDK BRAW no se puede redistribuir, asi que se pide al arrancar si falta.
+        self.root.after(400, self._warn_if_braw_sdk_missing)
 
     def _build_watch_folder_panel(self, parent):
         parent.columnconfigure(0, weight=1)
@@ -2041,12 +2044,12 @@ class BackupApp:
         else:
             messagebox.showinfo(APP_NAME, 'SDK BRAW importado correctamente.')
 
-    def _offer_braw_sdk(self, missing):
+    def _offer_braw_sdk(self, missing=None):
         """Guia para instalar el SDK, que no se puede redistribuir con la app."""
+        detail = f'Faltan las herramientas BRAW:\n{missing}\n\n' if missing else ''
         if messagebox.askyesno(
             APP_NAME,
-            f'Faltan las herramientas BRAW:\n{missing}\n\n'
-            + BRAW_SDK_HELP
+            detail + BRAW_SDK_HELP
             + '\n\n¿Abrir la pagina de descarga del SDK en el navegador?',
         ):
             webbrowser.open(BRAW_SDK_URL)
@@ -2056,6 +2059,16 @@ class BackupApp:
             'ficheros necesarios por ti.\n\n¿Importar el zip ahora?',
         ):
             self._import_braw_sdk()
+
+    def _warn_if_braw_sdk_missing(self):
+        """Aviso al arrancar: sin SDK no se pueden procesar ficheros .braw."""
+        missing = [
+            os.path.basename(path)
+            for path in (braw_proxy.BRAW_DECODE, os.path.join(braw_proxy.SDK_DIR, 'BlackmagicRawAPI.dll'))
+            if not os.path.isfile(path)
+        ]
+        if missing:
+            self._offer_braw_sdk(', '.join(missing))
 
     def _start_proxy_creation(self):
         if self.proxy_running or self.running:

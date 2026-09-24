@@ -28,6 +28,40 @@ def write_zip(path, members):
             archive.writestr(name, data)
 
 
+
+def check_startup_warning():
+    """El aviso de arranque solo aparece si falta el decodificador o el SDK."""
+    import backup_gui
+
+    class Stub:
+        def __init__(self):
+            self.offered = []
+
+        def _offer_braw_sdk(self, missing=None):
+            self.offered.append(missing)
+
+    real_decode = backup_gui.braw_proxy.BRAW_DECODE
+    real_sdk = backup_gui.braw_proxy.SDK_DIR
+    stub = Stub()
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            backup_gui.braw_proxy.BRAW_DECODE = os.path.join(tmp, 'nope.exe')
+            backup_gui.braw_proxy.SDK_DIR = tmp
+            backup_gui.BackupApp._warn_if_braw_sdk_missing(stub)
+            assert len(stub.offered) == 1, stub.offered
+            assert 'nope.exe' in stub.offered[0], stub.offered
+
+            present = os.path.join(tmp, 'braw_decode.exe')
+            open(present, 'wb').close()
+            open(os.path.join(tmp, 'BlackmagicRawAPI.dll'), 'wb').close()
+            backup_gui.braw_proxy.BRAW_DECODE = present
+            backup_gui.BackupApp._warn_if_braw_sdk_missing(stub)
+            assert len(stub.offered) == 1, 'no deberia avisar si todo esta presente'
+    finally:
+        backup_gui.braw_proxy.BRAW_DECODE = real_decode
+        backup_gui.braw_proxy.SDK_DIR = real_sdk
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         zip_path = os.path.join(tmp, 'sdk.zip')
@@ -65,6 +99,7 @@ def main():
         else:
             raise AssertionError('un zip sin DLL del SDK deberia dar ValueError')
 
+    check_startup_warning()
     print('test_braw_sdk_import: OK')
 
 
