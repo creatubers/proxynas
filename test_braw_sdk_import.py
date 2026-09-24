@@ -300,11 +300,29 @@ def check_proxy_encoder_selection():
         assert proxygenerator.detect_proxy_encoder('h264', 'auto')['encoder'] == 'libx264'
         assert not proxygenerator.detect_proxy_encoder('h264', 'hw', force=True)['available']
 
-        # H.264 en 8 bits y HEVC en 10, con la etiqueta de contenedor de cada uno.
-        assert proxygenerator.proxy_output_pix_fmt('h264_nvenc') == 'yuv420p'
-        assert proxygenerator.proxy_output_pix_fmt('libx264') == 'yuv420p'
+        # Misma profundidad en todos los codecs de proxy: 10 bits, que es la que
+        # ya usaban los proxies antes de poder elegir codec.
         assert proxygenerator.proxy_output_pix_fmt('hevc_nvenc') == 'p010le'
+        assert proxygenerator.proxy_output_pix_fmt('h264_nvenc') == 'p010le'
+        assert proxygenerator.proxy_output_pix_fmt('hevc_qsv') == 'p010le'
         assert proxygenerator.proxy_output_pix_fmt('libx265') == 'yuv420p10le'
+        assert proxygenerator.proxy_output_pix_fmt('libx264') == 'yuv420p10le'
+
+        # Los candidatos que ya existian generan los argumentos de siempre: si esto
+        # cambia, los proxies dejan de salir igual que antes del selector.
+        bitrate = proxygenerator.VIDEO_BITRATE
+        assert proxygenerator.proxy_encoder_options('hevc_nvenc') == [
+            '-c:v', 'hevc_nvenc', '-pix_fmt', 'p010le', '-preset', 'p5',
+            '-b:v', bitrate, '-tag:v', 'hvc1']
+        assert proxygenerator.proxy_encoder_options('hevc_amf') == [
+            '-c:v', 'hevc_amf', '-pix_fmt', 'p010le', '-quality', 'balanced',
+            '-b:v', bitrate, '-tag:v', 'hvc1']
+        assert proxygenerator.proxy_encoder_options('hevc_qsv') == [
+            '-c:v', 'hevc_qsv', '-pix_fmt', 'p010le', '-preset', 'medium',
+            '-b:v', bitrate, '-tag:v', 'hvc1']
+        assert proxygenerator.proxy_encoder_options('libx265') == [
+            '-c:v', 'libx265', '-pix_fmt', 'yuv420p10le', '-preset', 'medium',
+            '-x265-params', 'log-level=error', '-b:v', bitrate, '-tag:v', 'hvc1']
         assert proxygenerator.proxy_video_tag('h264_qsv') == 'avc1'
         assert proxygenerator.proxy_video_tag('libx265') == 'hvc1'
         assert proxygenerator.proxy_video_tag('av1_nvenc') is None

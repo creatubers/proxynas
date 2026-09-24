@@ -71,8 +71,11 @@ encoder actually used is shown under the radios.
 Detection is not a list lookup. Every candidate is run against a synthetic
 1080p clip, because `ffmpeg -encoders` lists encoders the machine cannot
 really use: `h264_nvenc` rejects 10-bit input on some GPUs, and `hevc_qsv` /
-`hevc_amf` are listed on machines with no Intel/AMD device. H.265 output stays
-10-bit, H.264 is encoded 8-bit, which is what hardware and NLEs accept.
+`hevc_amf` are listed on machines with no Intel/AMD device. Every proxy is
+10-bit whatever the codec, so an H.264 and an H.265 proxy of the same clip
+match. NVENC's H.264 is 8-bit only, so on NVIDIA cards the H.264 GPU option
+is not offered and H.264 runs on `libx264` (CPU); `hevc_nvenc` has no such
+limit.
 `ffmpeg` and `ffprobe` come from `portable/bin/` when present and from `PATH`
 otherwise.
 

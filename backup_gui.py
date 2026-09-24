@@ -1684,7 +1684,7 @@ class BackupApp:
         proxy_card.grid(row=1, column=0, sticky='nsew', padx=(0, 8))
         backup_card = self._card(main, 'Backup', 'Sincroniza lo nuevo hacia un destino y convierte vídeo a formatos ligeros.')
         backup_card.grid(row=1, column=1, sticky='nsew', padx=(8, 0))
-        proxy_card.body.rowconfigure(2, weight=1)
+        proxy_card.body.rowconfigure(4, weight=1)
         backup_card.body.rowconfigure(4, weight=1)
 
         self._build_proxy_panel(proxy_card.body)
@@ -1845,18 +1845,8 @@ class BackupApp:
             style='Body.TLabel',
         ).grid(row=0, column=0, sticky='ew')
 
-        status_box = ttk.Frame(parent, style='Subtle.TFrame', padding=12)
-        self._subtle_frames.append(status_box)
-        status_box.grid(row=1, column=0, sticky='ew', pady=(14, 14))
-        self.proxy_status_var = tk.StringVar(value='Selecciona una carpeta y crea proxies pendientes.')
-        ttk.Label(status_box, textvariable=self.proxy_status_var, style='Status.TLabel', wraplength=520, justify='left').pack(anchor='w')
-
-        controls = ttk.Frame(parent, style='Card.TFrame')
-        controls.grid(row=2, column=0, sticky='sew')
-        controls.columnconfigure(0, weight=1)
-
-        codec_box = ttk.Frame(controls, style='Card.TFrame')
-        codec_box.grid(row=0, column=0, sticky='ew', pady=(0, 12))
+        codec_box = ttk.Frame(parent, style='Card.TFrame')
+        codec_box.grid(row=1, column=0, sticky='ew', pady=(12, 0))
         ttk.Label(codec_box, text='Códec del proxy', style='Muted.TLabel').grid(row=0, column=0, sticky='w', pady=(0, 4))
 
         families = ttk.Frame(codec_box, style='Card.TFrame')
@@ -1888,12 +1878,24 @@ class BackupApp:
         self.proxy_codec_status_label = ttk.Label(codec_box, text='Detectando códecs...', style='Muted.TLabel', wraplength=280, justify='left')
         self.proxy_codec_status_label.grid(row=3, column=0, sticky='w', pady=(6, 0))
 
-        self._make_toggle(controls, 'Modo live', self.proxy_live_var, self._toggle_proxy_live).grid(row=1, column=0, sticky='ew', pady=(0, 12))
+        status_box = ttk.Frame(parent, style='Subtle.TFrame', padding=12)
+        self._subtle_frames.append(status_box)
+        status_box.grid(row=2, column=0, sticky='ew', pady=(14, 14))
+        self.proxy_status_var = tk.StringVar(value='Selecciona una carpeta y crea proxies pendientes.')
+        ttk.Label(status_box, textvariable=self.proxy_status_var, style='Status.TLabel', wraplength=520, justify='left').pack(anchor='w')
+
+        controls = ttk.Frame(parent, style='Card.TFrame')
+        controls.grid(row=3, column=0, sticky='ew')
+        controls.columnconfigure(0, weight=1)
+        self._make_toggle(controls, 'Modo live', self.proxy_live_var, self._toggle_proxy_live).grid(row=0, column=0, sticky='ew', pady=(0, 12))
         self.proxy_button = self._make_button(controls, 'Crear proxies pendientes', self._start_proxy_creation, kind='primary')
-        self.proxy_button.grid(row=2, column=0, sticky='ew')
+        self.proxy_button.grid(row=1, column=0, sticky='ew')
         self._make_button(controls, 'Importar SDK BRAW (zip)', self._import_braw_sdk).grid(
-            row=3, column=0, sticky='ew', pady=(8, 0)
+            row=2, column=0, sticky='ew', pady=(8, 0)
         )
+
+        # Hueco flexible: se lleva el alto sobrante de la tarjeta.
+        ttk.Frame(parent, style='Card.TFrame').grid(row=4, column=0, sticky='nsew')
 
     def _build_backup_panel(self, parent):
         parent.columnconfigure(0, weight=1)

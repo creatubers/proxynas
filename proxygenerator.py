@@ -431,11 +431,10 @@ def get_video_color_info(video_path):
 
 
 def proxy_output_pix_fmt(encoder):
-    # El H.264 de 10 bits no lo aceptan casi ninguna GPU ni todos los NLE,
-    # asi que ese codec va en 8 bits; el H.265 conserva los 10 del original.
-    if "264" in encoder:
-        return "yuv420p"
-    return "yuv420p10le" if encoder == "libx265" else "p010le"
+    # Misma profundidad en todos los codecs de proxy (10 bits): un H.264 y un
+    # H.265 del mismo material tienen que coincidir, y es el formato que ya
+    # usaban los proxies antes de poder elegir codec.
+    return "yuv420p10le" if encoder in ("libx265", "libx264") else "p010le"
 
 
 def standard_proxy_filter(source_path, encoder):
