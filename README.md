@@ -32,12 +32,12 @@ binaries in `portable/bin/`.
 
 ## Blackmagic RAW
 
-The Blackmagic RAW SDK is **not** included in this repository, since it is not
-redistributable. For `.braw` support, get the SDK from Blackmagic Design and
-place `BlackmagicRawAPI.dll`, `DecoderCUDA.dll`, `DecoderOpenCL.dll` and the
-`InstructionSetServicesAVX*.dll` files in `portable/bin/`, along with a
-`braw_decode` binary (`tools/braw_decode/braw_decode.cpp` shows how it is
-built).
+The Blackmagic RAW SDK is **not** included in this repository and is **not
+downloaded automatically**. For `.braw` support, get the SDK from Blackmagic
+Design and place `BlackmagicRawAPI.dll`, `DecoderCUDA.dll`, `DecoderOpenCL.dll`
+and the `InstructionSetServicesAVX*.dll` files in `portable/sdk/`, plus a
+`braw_decode` binary at `portable/bin/braw_decode.exe`
+(`tools/braw_decode/braw_decode.cpp` shows how it is built).
 
 Everything else works without it: non-BRAW media is handled by FFmpeg alone.
 
