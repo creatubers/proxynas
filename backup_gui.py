@@ -1683,8 +1683,6 @@ class BackupApp:
 
         self._build_proxy_panel(proxy_card.body)
         self._build_backup_panel(backup_card.body)
-        # El SDK BRAW no se puede redistribuir, asi que se pide al arrancar si falta.
-        self.root.after(400, self._warn_if_braw_sdk_missing)
 
     def _build_watch_folder_panel(self, parent):
         parent.columnconfigure(0, weight=1)
@@ -1830,6 +1828,8 @@ class BackupApp:
         self.proxy_status_var.set('Carpeta lista. Puedes crear proxies o activar modo live.')
         self._persist_config()
         self._draw_drop_zone()
+        # os.walk sobre una carpeta de red puede tardar, asi que se busca en segundo plano.
+        threading.Thread(target=self._check_braw_sdk_for_folder, args=(folder,), daemon=True).start()
 
     def _build_proxy_panel(self, parent):
         parent.columnconfigure(0, weight=1)
@@ -2060,15 +2060,17 @@ class BackupApp:
         ):
             self._import_braw_sdk()
 
-    def _warn_if_braw_sdk_missing(self):
-        """Aviso al arrancar: sin SDK no se pueden procesar ficheros .braw."""
+    def _check_braw_sdk_for_folder(self, folder):
+        """Avisa solo si la carpeta elegida trae .braw y falta el SDK."""
+        if not contains_files(folder, BRAW_EXTENSIONS):
+            return
         missing = [
             os.path.basename(path)
             for path in (braw_proxy.BRAW_DECODE, os.path.join(braw_proxy.SDK_DIR, 'BlackmagicRawAPI.dll'))
             if not os.path.isfile(path)
         ]
         if missing:
-            self._offer_braw_sdk(', '.join(missing))
+            self.root.after(0, lambda: self._offer_braw_sdk(', '.join(missing)))
 
     def _start_proxy_creation(self):
         if self.proxy_running or self.running:

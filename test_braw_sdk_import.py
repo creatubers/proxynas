@@ -5,6 +5,7 @@ Ejecutar con:  python test_braw_sdk_import.py
 
 import os
 import tempfile
+import types
 import zipfile
 
 import proxygenerator
@@ -29,13 +30,14 @@ def write_zip(path, members):
 
 
 
-def check_startup_warning():
-    """El aviso de arranque solo aparece si falta el decodificador o el SDK."""
+def check_folder_warning():
+    """Solo avisa si la carpeta elegida trae .braw y falta el SDK."""
     import backup_gui
 
     class Stub:
         def __init__(self):
             self.offered = []
+            self.root = types.SimpleNamespace(after=lambda _ms, fn: fn())
 
         def _offer_braw_sdk(self, missing=None):
             self.offered.append(missing)
@@ -45,9 +47,19 @@ def check_startup_warning():
     stub = Stub()
     try:
         with tempfile.TemporaryDirectory() as tmp:
+            empty_dir = os.path.join(tmp, 'sin_braw')
+            braw_dir = os.path.join(tmp, 'con_braw')
+            os.makedirs(empty_dir)
+            os.makedirs(braw_dir)
+            open(os.path.join(braw_dir, 'clip.braw'), 'wb').close()
+
             backup_gui.braw_proxy.BRAW_DECODE = os.path.join(tmp, 'nope.exe')
             backup_gui.braw_proxy.SDK_DIR = tmp
-            backup_gui.BackupApp._warn_if_braw_sdk_missing(stub)
+
+            backup_gui.BackupApp._check_braw_sdk_for_folder(stub, empty_dir)
+            assert stub.offered == [], 'sin .braw no debe avisar'
+
+            backup_gui.BackupApp._check_braw_sdk_for_folder(stub, braw_dir)
             assert len(stub.offered) == 1, stub.offered
             assert 'nope.exe' in stub.offered[0], stub.offered
 
@@ -55,8 +67,8 @@ def check_startup_warning():
             open(present, 'wb').close()
             open(os.path.join(tmp, 'BlackmagicRawAPI.dll'), 'wb').close()
             backup_gui.braw_proxy.BRAW_DECODE = present
-            backup_gui.BackupApp._warn_if_braw_sdk_missing(stub)
-            assert len(stub.offered) == 1, 'no deberia avisar si todo esta presente'
+            backup_gui.BackupApp._check_braw_sdk_for_folder(stub, braw_dir)
+            assert len(stub.offered) == 1, 'con SDK no debe avisar'
     finally:
         backup_gui.braw_proxy.BRAW_DECODE = real_decode
         backup_gui.braw_proxy.SDK_DIR = real_sdk
@@ -99,7 +111,7 @@ def main():
         else:
             raise AssertionError('un zip sin DLL del SDK deberia dar ValueError')
 
-    check_startup_warning()
+    check_folder_warning()
     print('test_braw_sdk_import: OK')
 
 

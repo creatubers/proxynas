@@ -36,11 +36,11 @@ The Blackmagic RAW SDK is **not** included in this repository and is **not**
 downloaded automatically: Blackmagic does not allow redistributing it and the
 download requires accepting their license.
 
-Only `.braw` files need it. Proxynas checks for the SDK on every launch and, when
-it is missing, shows a dialog with the download page
+Only `.braw` files need it. When you point Proxynas at a folder that contains
+`.braw` files and the SDK is missing, it shows a dialog with the download page
 (`https://www.blackmagicdesign.com/support/latest-download/braw-sdk/windows`) and
-offers to import the zip you downloaded. The same dialog appears if a `.braw`
-file turns up without the SDK. Importing copies `BlackmagicRawAPI.dll`,
+offers to import the zip you downloaded. Folders without `.braw` are never
+checked, so it does not nag over FFmpeg-only material. Importing copies `BlackmagicRawAPI.dll`,
 `DecoderCUDA.dll`, `DecoderOpenCL.dll` and the `InstructionSetServicesAVX*.dll`
 files into `portable/sdk/`; the **"Importar SDK BRAW (zip)"** button in the
 proxies panel does the same thing by hand. Any recent SDK version works: files
@@ -51,7 +51,7 @@ the SDK: it is Proxynas's own decoder (source in `tools/braw_decode/`, built
 against the SDK headers), and the Windows builds already include it.
 
 Everything else works without it: non-BRAW media is handled by FFmpeg alone.
-`python test_braw_sdk_import.py` checks the zip import and the startup warning.
+`python test_braw_sdk_import.py` checks the zip import and the folder warning.
 
 ## Diagnostics
 
