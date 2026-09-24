@@ -27,8 +27,10 @@ python Proxynas.py --cli <source_dir> <dest_dir> [--no-transcode]
 ## FFmpeg
 
 On Windows, Proxynas downloads a current FFmpeg build into `portable/bin/` on
-first launch. Otherwise put `ffmpeg` and `ffprobe` on `PATH`, or drop the
-binaries in `portable/bin/`.
+first launch. If the download cannot reach GitHub, it says so and offers to
+open the download page; unzip that build and copy `ffmpeg.exe` and
+`ffprobe.exe` from its `bin\` folder into `portable/bin/`. Otherwise put
+`ffmpeg` and `ffprobe` on `PATH`, or drop the binaries in `portable/bin/`.
 
 ## Blackmagic RAW
 
@@ -105,20 +107,24 @@ when present.
 
 ## Antivirus
 
-The Windows build is unsigned. SmartScreen warns on first launch, and Windows
-Defender or Chrome may flag `Proxynas.exe` as `Trojan:Win32/Wacatac.H!ml`.
-That is a false positive: it is Defender's machine-learning heuristic firing
-on unsigned PyInstaller executables, not a real detection. The build avoids
-UPX and embeds a version resource to lower the odds, but only a code-signing
-certificate removes it for good.
+The Windows build is unsigned, so expect three false positives. None of them
+is a real detection, and only a code-signing certificate removes them for
+good. The long walk-through, with the Spanish UI paths, is on the
+[releases page](https://github.com/creatubers/proxynas/releases).
 
-- Chrome: open `chrome://downloads` and choose "Keep dangerous file".
-- Defender: Windows Security -> Protection history -> select the detection ->
-  Allow, or add an exclusion for the unzipped folder.
-- `curl -L -o Proxynas-win64.zip <release url>` skips the browser-side block.
-
-False positives can also be reported to Microsoft:
-<https://www.microsoft.com/en-us/wdsi/filesubmission>.
+- **Defender deletes `Proxynas.exe` while unzipping** (usually a `Wacatac`
+  heuristic such as `Trojan:Win32/Wacatac.H!ml`). Exclude the folder *before*
+  you extract: Windows Security -> Virus & threat protection -> Manage
+  settings -> Exclusions -> Add or remove exclusions -> Add -> Folder.
+  Allowing the detection afterwards does not bring a quarantined file back.
+- **SmartScreen: "Windows protected your PC".** *More info* -> *Run anyway*,
+  or drop the mark that triggers it first with
+  `Unblock-File .\Proxynas-win64.zip`.
+- **Chrome blocks the download.** `chrome://downloads` -> the blocked item's
+  menu -> keep it, or skip the browser:
+  `curl.exe -L -o Proxynas-win64.zip <release url>`. Use `curl.exe`, not
+  `curl`: in Windows PowerShell 5.1 `curl` is an alias for
+  `Invoke-WebRequest` and those flags fail.
 
 ## License
 
