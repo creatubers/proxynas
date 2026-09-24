@@ -18,6 +18,7 @@ import time
 import threading
 import urllib.error
 import urllib.request
+import webbrowser
 import zipfile
 import tkinter as tk
 import tkinter.font as tkfont
@@ -67,6 +68,16 @@ PORTABLE_BIN_DIR = os.path.join(SCRIPT_DIR, 'portable', 'bin')
 PORTABLE_SDK_DIR = os.path.join(SCRIPT_DIR, 'portable', 'sdk')
 FFMPEG_DOWNLOAD_URL = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip'
 FFMPEG_MIN_BUILD_DATE = '20260819'
+# braw_decode.exe es un binario de Windows, asi que el SDK util es el de Windows.
+BRAW_SDK_URL = 'https://www.blackmagicdesign.com/support/latest-download/braw-sdk/windows'
+BRAW_SDK_HELP = (
+    'El SDK de Blackmagic RAW no se puede distribuir con Proxynas, asi que hay que\n'
+    'descargarlo una vez desde Blackmagic:\n\n'
+    '  1. Abre la pagina de descarga y baja el SDK para Windows.\n'
+    '  2. Vuelve a Proxynas y pulsa "Importar SDK BRAW (zip)".\n'
+    '  3. Elige el zip descargado: Proxynas copia los ficheros necesarios.\n\n'
+    'Sin SDK todo sigue funcionando salvo los ficheros .braw.'
+)
 
 
 def _resolve_tool(name):
@@ -1837,6 +1848,9 @@ class BackupApp:
         self._make_toggle(controls, 'Modo live', self.proxy_live_var, self._toggle_proxy_live).grid(row=0, column=0, sticky='ew', pady=(0, 12))
         self.proxy_button = self._make_button(controls, 'Crear proxies pendientes', self._start_proxy_creation, kind='primary')
         self.proxy_button.grid(row=1, column=0, sticky='ew')
+        self._make_button(controls, 'Importar SDK BRAW (zip)', self._import_braw_sdk).grid(
+            row=2, column=0, sticky='ew', pady=(8, 0)
+        )
 
     def _build_backup_panel(self, parent):
         parent.columnconfigure(0, weight=1)
@@ -2002,6 +2016,47 @@ class BackupApp:
         self.proxy_button.config(state=state)
         self.btn_start.config(state=state if running else 'normal')
 
+    def _import_braw_sdk(self):
+        zip_path = filedialog.askopenfilename(
+            title='Selecciona el zip del Blackmagic RAW SDK',
+            filetypes=[('Zip', '*.zip'), ('Todos los ficheros', '*.*')],
+        )
+        if not zip_path:
+            return
+        try:
+            result = braw_proxy.import_braw_sdk(zip_path)
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, f'No se pudo importar el SDK BRAW:\n{exc}')
+            return
+
+        lines = [f'Copiado: {os.path.basename(path)}' for path in result['copied']]
+        if result['missing']:
+            lines.append('No estaba en el zip: ' + ', '.join(result['missing']))
+        if not result['decoder']:
+            lines.append('Falta braw_decode.exe en portable/bin/ (lo trae el build de Proxynas, no el SDK).')
+        message = '\n'.join(lines)
+        self._log(message)
+        if result['missing'] or not result['decoder']:
+            messagebox.showwarning(APP_NAME, message)
+        else:
+            messagebox.showinfo(APP_NAME, 'SDK BRAW importado correctamente.')
+
+    def _offer_braw_sdk(self, missing):
+        """Guia para instalar el SDK, que no se puede redistribuir con la app."""
+        if messagebox.askyesno(
+            APP_NAME,
+            f'Faltan las herramientas BRAW:\n{missing}\n\n'
+            + BRAW_SDK_HELP
+            + '\n\n¿Abrir la pagina de descarga del SDK en el navegador?',
+        ):
+            webbrowser.open(BRAW_SDK_URL)
+        if messagebox.askyesno(
+            APP_NAME,
+            'Si ya tienes el zip del SDK descargado, Proxynas puede copiar los\n'
+            'ficheros necesarios por ti.\n\n¿Importar el zip ahora?',
+        ):
+            self._import_braw_sdk()
+
     def _start_proxy_creation(self):
         if self.proxy_running or self.running:
             return
@@ -2009,10 +2064,11 @@ class BackupApp:
         if not root_dir or not os.path.isdir(root_dir):
             messagebox.showerror('Error', 'Selecciona una carpeta vigilada valida.')
             return
-        ok, missing = check_braw_tools()
-        if not ok:
-            messagebox.showerror('Error', f'BRAW portable no disponible: {missing}')
-            return
+        if contains_files(root_dir, BRAW_EXTENSIONS):
+            ok, missing = check_braw_tools()
+            if not ok:
+                self._offer_braw_sdk(missing)
+                return
         self._set_proxy_running(True)
         self.proxy_status_var.set('Buscando material sin proxy...')
         threading.Thread(target=self._run_proxy_creation_for_watch_folder, daemon=True).start()
@@ -2339,7 +2395,7 @@ class BackupApp:
         if self.transcode_var.get() and mode in ('todo', 'video') and contains_files(src, BRAW_EXTENSIONS):
             braw_ok, braw_missing = check_braw_tools()
             if not braw_ok:
-                messagebox.showerror("Error", f"BRAW portable no disponible: {braw_missing}")
+                self._offer_braw_sdk(braw_missing)
                 return
 
         self.running = True

@@ -1,9 +1,11 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 import threading
 import time
+import zipfile
 
 
 VIDEO_EXTENSIONS = (".braw", ".mov", ".mp4", ".mxf", ".r3d")
@@ -29,6 +31,8 @@ FFMPEG = os.path.join(BIN_DIR, "ffmpeg.exe")
 FFPROBE = os.path.join(BIN_DIR, "ffprobe.exe")
 BRAW_DECODE = os.path.join(BIN_DIR, "braw_decode.exe")
 
+BRAW_SDK_DLLS = ("BlackmagicRawAPI.dll", "DecoderCUDA.dll", "DecoderOpenCL.dll")
+
 
 def proxy_extension_for(source_path):
     return ".MOV" if os.path.splitext(source_path)[1] == ".MOV" else ".mov"
@@ -39,12 +43,75 @@ def require_file(path, label):
         raise FileNotFoundError(f"{label} no encontrado: {path}")
 
 
-def check_portable_tools():
+def check_portable_tools(require_braw=True):
     require_file(FFMPEG, "FFmpeg portable")
     require_file(FFPROBE, "FFprobe portable")
-    require_file(BRAW_DECODE, "Decodificador BRAW portable")
-    require_file(os.path.join(SDK_DIR, "BlackmagicRawAPI.dll"), "SDK BRAW portable")
+    if require_braw:
+        require_file(BRAW_DECODE, "Decodificador BRAW portable")
+        require_file(os.path.join(SDK_DIR, "BlackmagicRawAPI.dll"), "SDK BRAW portable")
     get_proxy_encoder()
+
+
+def _extract_member(archive, member, target):
+    with archive.open(member) as source, open(target, "wb") as destination:
+        shutil.copyfileobj(source, destination)
+    return target
+
+
+def _arch_rank(zip_name):
+    lowered = zip_name.lower()
+    if "x64" in lowered or "amd64" in lowered:
+        return 2
+    if "x86" in lowered or "arm" in lowered or "win32" in lowered:
+        return 0
+    return 1
+
+
+def braw_sdk_entries(zip_names):
+    """Elige un fichero por nombre dentro del zip del SDK.
+
+    El zip oficial trae cabeceras, libs y varias arquitecturas, y su estructura
+    cambia entre versiones, asi que se busca por nombre de fichero (prefiriendo
+    x64) en lugar de por rutas fijas.
+    """
+    wanted_dlls = tuple(name.lower() for name in BRAW_SDK_DLLS)
+    picked = {}
+    for name in zip_names:
+        base = os.path.basename(name).lower()
+        is_dll = base.endswith(".dll") and (
+            base in wanted_dlls or base.startswith("instructionsetservices")
+        )
+        if not (is_dll or base == "braw_decode.exe"):
+            continue
+        if base not in picked or _arch_rank(name) > _arch_rank(picked[base]):
+            picked[base] = name
+    return picked
+
+
+def import_braw_sdk(zip_path):
+    """Copia a portable/ los ficheros BRAW que haya dentro de un zip del SDK."""
+    with zipfile.ZipFile(zip_path) as archive:
+        picked = braw_sdk_entries(archive.namelist())
+        dlls = {base: name for base, name in picked.items() if base.endswith(".dll")}
+        if not dlls:
+            raise ValueError("El zip no contiene ningun DLL del SDK BRAW.")
+
+        os.makedirs(SDK_DIR, exist_ok=True)
+        copied = [
+            _extract_member(archive, name, os.path.join(SDK_DIR, base))
+            for base, name in sorted(dlls.items())
+        ]
+
+        decoder_name = picked.get("braw_decode.exe")
+        if decoder_name:
+            os.makedirs(BIN_DIR, exist_ok=True)
+            copied.append(_extract_member(archive, decoder_name, BRAW_DECODE))
+
+    return {
+        "copied": copied,
+        "missing": [name for name in BRAW_SDK_DLLS if name.lower() not in dlls],
+        "decoder": os.path.isfile(BRAW_DECODE),
+    }
 
 
 def get_ffmpeg_video_encoders():
@@ -505,13 +572,16 @@ def find_video_files(root_dir):
 
 
 def run_proxy_creation(root_dir):
-    check_portable_tools()
-
     print(f"\nBuscando videos en: {root_dir}")
     video_files = find_video_files(root_dir)
     if not video_files:
         print("No se encontraron videos para analizar.")
         return
+
+    # El material sin .braw no necesita el SDK, asi que solo se exige si hay alguno.
+    check_portable_tools(
+        require_braw=any(path.lower().endswith(".braw") for path in video_files)
+    )
 
     jobs = []
     print("\nAnalizando archivos y proxies existentes...")
