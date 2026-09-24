@@ -19,8 +19,17 @@ BRAW_SCALE = "1"
 PROXY_WIDTH = 1920
 VIDEO_BITRATE = "8M"
 BRAW_RAW_PIX_FMT = "rgba64le"
-HEVC_ENCODER_CANDIDATES = ("hevc_nvenc", "hevc_amf", "hevc_qsv", "libx265")
-_PROXY_ENCODER_CACHE = None
+# Candidatos por familia de codec y aceleracion. "auto" prueba hardware y cae a software.
+PROXY_CODECS = ("hevc", "h264")
+PROXY_CODEC_LABELS = {"hevc": "H.265", "h264": "H.264"}
+PROXY_ACCELS = ("auto", "hw", "sw")
+DEFAULT_PROXY_CODEC = "hevc"
+DEFAULT_PROXY_ACCEL = "auto"
+PROXY_ENCODERS = {
+    "hevc": {"hw": ("hevc_nvenc", "hevc_amf", "hevc_qsv"), "sw": ("libx265",)},
+    "h264": {"hw": ("h264_nvenc", "h264_amf", "h264_qsv"), "sw": ("libx264",)},
+}
+_PROXY_ENCODER_CACHE = {}
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -28,9 +37,17 @@ PORTABLE_DIR = os.path.join(SCRIPT_DIR, "portable")
 BIN_DIR = os.path.join(PORTABLE_DIR, "bin")
 SDK_DIR = os.path.join(PORTABLE_DIR, "sdk")
 
-FFMPEG = os.path.join(BIN_DIR, "ffmpeg.exe")
-FFPROBE = os.path.join(BIN_DIR, "ffprobe.exe")
-BRAW_DECODE = os.path.join(BIN_DIR, "braw_decode.exe")
+def resolve_tool(name):
+    """Binario portable si esta descargado; si no, el que haya en PATH."""
+    portable = os.path.join(BIN_DIR, name + (".exe" if os.name == "nt" else ""))
+    if os.path.isfile(portable):
+        return portable
+    return shutil.which(name) or portable
+
+
+FFMPEG = resolve_tool("ffmpeg")
+FFPROBE = resolve_tool("ffprobe")
+BRAW_DECODE = resolve_tool("braw_decode")
 
 BRAW_SDK_DLLS = ("BlackmagicRawAPI.dll", "DecoderCUDA.dll", "DecoderOpenCL.dll")
 
@@ -50,11 +67,11 @@ def check_braw_tools(require_braw=True):
         require_file(os.path.join(SDK_DIR, "BlackmagicRawAPI.dll"), "SDK BRAW portable")
 
 
-def check_portable_tools(require_braw=True):
-    require_file(FFMPEG, "FFmpeg portable")
-    require_file(FFPROBE, "FFprobe portable")
+def check_portable_tools(require_braw=True, codec=DEFAULT_PROXY_CODEC, accel=DEFAULT_PROXY_ACCEL):
+    require_file(FFMPEG, "FFmpeg")
+    require_file(FFPROBE, "FFprobe")
     check_braw_tools(require_braw)
-    get_proxy_encoder()
+    get_proxy_encoder(codec, accel)
 
 
 def _extract_member(archive, member, target):
@@ -185,42 +202,61 @@ def import_braw_sdk(zip_path):
         "decoder": os.path.isfile(BRAW_DECODE),
     }
 
-def get_ffmpeg_video_encoders():
+def ffmpeg_encoder_list():
+    """(encoders, error). error es None solo si ffmpeg respondio de verdad."""
     try:
         output = subprocess.check_output(
             [FFMPEG, "-hide_banner", "-encoders"],
             text=True,
             stderr=subprocess.STDOUT,
-            timeout=10,
+            # Holgado a proposito: la primera vez que se lanza, el antivirus
+            # revisa los 145 MB de ffmpeg antes de dejarlo arrancar.
+            timeout=60,
         )
-    except Exception:
-        return set()
+    except Exception as exc:
+        return set(), f"ffmpeg no responde en {FFMPEG}: {exc}"
 
     encoders = set()
     for line in output.splitlines():
         parts = line.split()
         if len(parts) >= 2 and parts[0].startswith("V"):
             encoders.add(parts[1])
-    return encoders
+    if not encoders:
+        return set(), "ffmpeg no lista ningun encoder de video"
+    return encoders, None
+
+
+def get_ffmpeg_video_encoders():
+    """Nombres de encoders de video de este ffmpeg (vacio si no responde)."""
+    return ffmpeg_encoder_list()[0]
+
+
+def proxy_video_tag(encoder):
+    """Etiqueta de codec del contenedor; None si ffmpeg ya elige la correcta."""
+    if "hevc" in encoder or "265" in encoder:
+        return "hvc1"
+    if "h264" in encoder or "264" in encoder:
+        return "avc1"
+    return None
 
 
 def proxy_encoder_options(encoder):
-    if encoder == "hevc_nvenc":
-        return ["-c:v", encoder, "-pix_fmt", proxy_output_pix_fmt(encoder), "-preset", "p5", "-b:v", VIDEO_BITRATE, "-tag:v", "hvc1"]
-    if encoder == "hevc_amf":
-        return ["-c:v", encoder, "-pix_fmt", proxy_output_pix_fmt(encoder), "-quality", "balanced", "-b:v", VIDEO_BITRATE, "-tag:v", "hvc1"]
-    if encoder == "hevc_qsv":
-        return ["-c:v", encoder, "-pix_fmt", proxy_output_pix_fmt(encoder), "-preset", "medium", "-b:v", VIDEO_BITRATE, "-tag:v", "hvc1"]
-    if encoder == "libx265":
-        return [
-            "-c:v", encoder,
-            "-pix_fmt", "yuv420p10le",
-            "-preset", "medium",
-            "-x265-params", "log-level=error",
-            "-b:v", VIDEO_BITRATE,
-            "-tag:v", "hvc1",
-        ]
-    return ["-c:v", encoder, "-pix_fmt", "yuv420p10le", "-b:v", VIDEO_BITRATE, "-tag:v", "hvc1"]
+    options = ["-c:v", encoder, "-pix_fmt", proxy_output_pix_fmt(encoder)]
+    if encoder.endswith("_nvenc"):
+        options.extend(["-preset", "p5"])
+    elif encoder.endswith("_amf"):
+        options.extend(["-quality", "balanced"])
+    elif encoder.endswith("_qsv"):
+        options.extend(["-preset", "medium"])
+    elif encoder == "libx265":
+        options.extend(["-preset", "medium", "-x265-params", "log-level=error"])
+    elif encoder == "libx264":
+        options.extend(["-preset", "medium"])
+    options.extend(["-b:v", VIDEO_BITRATE])
+    tag = proxy_video_tag(encoder)
+    if tag:
+        options.extend(["-tag:v", tag])
+    return options
 
 
 def test_proxy_encoder(encoder):
@@ -238,51 +274,78 @@ def test_proxy_encoder(encoder):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
-            timeout=20,
+            timeout=60,
         )
         return True, ""
     except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or "").strip().splitlines()
-        return False, detail[-1] if detail else f"ffmpeg código {exc.returncode}"
+        lines = [line.strip() for line in (exc.stderr or "").splitlines() if line.strip()]
+        # La primera linea es el motivo real ("No capable devices found"); la
+        # ultima suele ser el generico "Nothing was written into output file".
+        return False, lines[0] if lines else f"ffmpeg código {exc.returncode}"
     except Exception as exc:
         return False, str(exc)
 
 
-def detect_proxy_encoder(force=False):
-    global _PROXY_ENCODER_CACHE
-    if _PROXY_ENCODER_CACHE is not None and not force:
-        return _PROXY_ENCODER_CACHE
+def proxy_encoder_candidates(codec, accel):
+    """Encoders a probar, en orden, para el codec y la aceleracion pedidos."""
+    table = PROXY_ENCODERS.get(codec) or PROXY_ENCODERS[DEFAULT_PROXY_CODEC]
+    if accel == "hw":
+        return table["hw"]
+    if accel == "sw":
+        return table["sw"]
+    return table["hw"] + table["sw"]
 
-    available = get_ffmpeg_video_encoders()
+
+def detect_proxy_encoder(codec=DEFAULT_PROXY_CODEC, accel=DEFAULT_PROXY_ACCEL, force=False):
+    """Que encoder usaria un proxy de este codec con esta aceleracion."""
+    key = (codec, accel)
+    cached = _PROXY_ENCODER_CACHE.get(key)
+    if cached is not None and not force:
+        return cached
+
+    available, list_error = ffmpeg_encoder_list()
     tested = []
-    for encoder in HEVC_ENCODER_CANDIDATES:
-        if encoder not in available:
-            tested.append(f"{encoder}: no listado por ffmpeg")
-            continue
-        ok, detail = test_proxy_encoder(encoder)
-        tested.append(f"{encoder}: {'OK' if ok else detail}")
-        if ok:
-            _PROXY_ENCODER_CACHE = {
-                "encoder": encoder,
-                "available": True,
-                "tested": tested,
-                "reason": "",
-            }
-            return _PROXY_ENCODER_CACHE
+    if list_error:
+        # Antes, no poder ni arrancar ffmpeg se reportaba como "libx265 no
+        # listado por ffmpeg": culpaba al encoder cuando el problema era otro.
+        tested.append(list_error)
+    else:
+        for encoder in proxy_encoder_candidates(codec, accel):
+            if encoder not in available:
+                tested.append(f"{encoder}: no listado por ffmpeg")
+                continue
+            ok, detail = test_proxy_encoder(encoder)
+            tested.append(f"{encoder}: {'OK' if ok else detail}")
+            if ok:
+                result = {
+                    "encoder": encoder,
+                    "codec": codec,
+                    "accel": accel,
+                    "available": True,
+                    "tested": tested,
+                    "reason": "",
+                }
+                _PROXY_ENCODER_CACHE[key] = result
+                return result
 
-    _PROXY_ENCODER_CACHE = {
+    result = {
         "encoder": None,
+        "codec": codec,
+        "accel": accel,
         "available": False,
         "tested": tested,
-        "reason": tested[-1] if tested else "ffmpeg no lista encoders HEVC",
+        "reason": tested[-1] if tested else "ffmpeg no lista encoders de vídeo",
     }
-    return _PROXY_ENCODER_CACHE
+    _PROXY_ENCODER_CACHE[key] = result
+    return result
 
 
-def get_proxy_encoder():
-    result = detect_proxy_encoder()
+def get_proxy_encoder(codec=DEFAULT_PROXY_CODEC, accel=DEFAULT_PROXY_ACCEL):
+    result = detect_proxy_encoder(codec, accel)
     if not result.get("available"):
-        raise RuntimeError(f"Sin encoder HEVC para proxies: {result.get('reason')}")
+        label = PROXY_CODEC_LABELS.get(codec, codec)
+        modo = {"hw": " de hardware", "sw": " de software"}.get(accel, "")
+        raise RuntimeError(f"Sin encoder {label}{modo} para proxies: {result.get('reason')}")
     return result["encoder"]
 
 
@@ -368,7 +431,11 @@ def get_video_color_info(video_path):
 
 
 def proxy_output_pix_fmt(encoder):
-    return "p010le" if encoder != "libx265" else "yuv420p10le"
+    # El H.264 de 10 bits no lo aceptan casi ninguna GPU ni todos los NLE,
+    # asi que ese codec va en 8 bits; el H.265 conserva los 10 del original.
+    if "264" in encoder:
+        return "yuv420p"
+    return "yuv420p10le" if encoder == "libx265" else "p010le"
 
 
 def standard_proxy_filter(source_path, encoder):
@@ -470,7 +537,7 @@ def proxy_scale_filter(width):
     return ["-vf", f"scale={PROXY_WIDTH}:-2"]
 
 
-def create_braw_proxy(source_path, output_path):
+def create_braw_proxy(source_path, output_path, codec=DEFAULT_PROXY_CODEC, accel=DEFAULT_PROXY_ACCEL):
     partial_output_path = temporary_output_path(output_path)
     remove_partial_output(output_path)
 
@@ -479,7 +546,7 @@ def create_braw_proxy(source_path, output_path):
     height = int(info["height"])
     frame_rate = str(info["frame_rate"])
     timecode = info.get("timecode") or "00:00:00:00"
-    encoder = get_proxy_encoder()
+    encoder = get_proxy_encoder(codec, accel)
 
     decode_command = [
         BRAW_DECODE,
@@ -579,11 +646,11 @@ def create_braw_proxy(source_path, output_path):
     promote_partial_output(partial_output_path, output_path)
 
 
-def create_standard_proxy(source_path, output_path):
+def create_standard_proxy(source_path, output_path, codec=DEFAULT_PROXY_CODEC, accel=DEFAULT_PROXY_ACCEL):
     partial_output_path = temporary_output_path(output_path)
     remove_partial_output(output_path)
     timecode = get_timecode(source_path)
-    encoder = get_proxy_encoder()
+    encoder = get_proxy_encoder(codec, accel)
     command = [
         FFMPEG,
         "-hide_banner",
@@ -642,7 +709,7 @@ def find_video_files(root_dir):
     return sorted(video_files)
 
 
-def run_proxy_creation(root_dir):
+def run_proxy_creation(root_dir, codec=DEFAULT_PROXY_CODEC, accel=DEFAULT_PROXY_ACCEL):
     print(f"\nBuscando vídeos en: {root_dir}")
     video_files = find_video_files(root_dir)
     if not video_files:
@@ -651,7 +718,9 @@ def run_proxy_creation(root_dir):
 
     # El material sin .braw no necesita el SDK, así que solo se exige si hay alguno.
     check_portable_tools(
-        require_braw=any(path.lower().endswith(".braw") for path in video_files)
+        require_braw=any(path.lower().endswith(".braw") for path in video_files),
+        codec=codec,
+        accel=accel,
     )
 
     jobs = []
@@ -682,9 +751,9 @@ def run_proxy_creation(root_dir):
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         try:
             if source_path.lower().endswith(".braw"):
-                create_braw_proxy(source_path, output_path)
+                create_braw_proxy(source_path, output_path, codec, accel)
             else:
-                create_standard_proxy(source_path, output_path)
+                create_standard_proxy(source_path, output_path, codec, accel)
             print(f"\nÉXITO: proxy creado para {os.path.basename(source_path)}")
         except Exception as exc:
             remove_partial_output(output_path)

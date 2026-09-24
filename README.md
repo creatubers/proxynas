@@ -58,7 +58,23 @@ the SDK: it is Proxynas's own decoder (source in `tools/braw_decode/`, built
 against the SDK headers), and the Windows builds already include it.
 
 Everything else works without it: non-BRAW media is handled by FFmpeg alone.
-`python test_braw_sdk_import.py` checks the zip import and the folder warning.
+`python test_braw_sdk_import.py` checks the zip import, the folder warning and
+the proxy encoder selection.
+
+## Proxies
+
+The proxies panel chooses the codec (`H.265` or `H.264`) and the acceleration
+(`GPU (hardware)` or `CPU (software)`). GPU is the default and is only offered
+when a hardware encoder for that codec was validated on this machine; the
+encoder actually used is shown under the radios.
+
+Detection is not a list lookup. Every candidate is run against a synthetic
+1080p clip, because `ffmpeg -encoders` lists encoders the machine cannot
+really use: `h264_nvenc` rejects 10-bit input on some GPUs, and `hevc_qsv` /
+`hevc_amf` are listed on machines with no Intel/AMD device. H.265 output stays
+10-bit, H.264 is encoded 8-bit, which is what hardware and NLEs accept.
+`ffmpeg` and `ffprobe` come from `portable/bin/` when present and from `PATH`
+otherwise.
 
 ## Diagnostics
 

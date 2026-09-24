@@ -257,6 +257,72 @@ def check_import_status():
     assert told, "deberia haber avisado al usuario"
 
 
+def check_proxy_encoder_selection():
+    """El proxy elige encoder por codec y aceleracion, sin culpar al codec si falla ffmpeg."""
+    guardado = (proxygenerator.ffmpeg_encoder_list, proxygenerator.test_proxy_encoder)
+    cache_previo = proxygenerator._PROXY_ENCODER_CACHE
+    proxygenerator._PROXY_ENCODER_CACHE = {}
+
+    def stub_listar(encoders, error=None):
+        proxygenerator.ffmpeg_encoder_list = lambda: (set(encoders), error)
+
+    def stub_probar(validos):
+        def probar(encoder):
+            if encoder in validos:
+                return True, ''
+            return False, 'No capable devices found'
+        proxygenerator.test_proxy_encoder = probar
+
+    try:
+        assert proxygenerator.proxy_encoder_candidates('h264', 'hw') == ('h264_nvenc', 'h264_amf', 'h264_qsv')
+        assert proxygenerator.proxy_encoder_candidates('h264', 'sw') == ('libx264',)
+        assert proxygenerator.proxy_encoder_candidates('hevc', 'auto') == ('hevc_nvenc', 'hevc_amf', 'hevc_qsv', 'libx265')
+        assert proxygenerator.proxy_encoder_candidates('inexistente', 'sw') == ('libx265',), 'codec desconocido -> H.265'
+
+        # Si ffmpeg no responde, el motivo debe decir eso; antes se reportaba como
+        # "libx265 no listado por ffmpeg" y culpaba al encoder equivocado.
+        stub_listar([], error='ffmpeg no responde en C:/x/ffmpeg.exe')
+        caido = proxygenerator.detect_proxy_encoder('hevc', 'auto', force=True)
+        assert not caido['available'], caido
+        assert 'ffmpeg' in caido['reason'], caido
+        assert 'libx265' not in caido['reason'], caido
+
+        # Solo funciona libx264: se descarta el hardware y no se vuelve a probar.
+        stub_listar(['h264_nvenc', 'libx264'])
+        stub_probar({'libx264'})
+        h264 = proxygenerator.detect_proxy_encoder('h264', 'auto', force=True)
+        assert h264['available'] and h264['encoder'] == 'libx264', h264
+        assert 'h264_nvenc: No capable devices found' in h264['tested'], h264
+        assert h264['tested'][-1] == 'libx264: OK', h264
+
+        # La cache es por codec y aceleracion, no global.
+        stub_probar(set())
+        assert proxygenerator.detect_proxy_encoder('h264', 'auto')['encoder'] == 'libx264'
+        assert not proxygenerator.detect_proxy_encoder('h264', 'hw', force=True)['available']
+
+        # H.264 en 8 bits y HEVC en 10, con la etiqueta de contenedor de cada uno.
+        assert proxygenerator.proxy_output_pix_fmt('h264_nvenc') == 'yuv420p'
+        assert proxygenerator.proxy_output_pix_fmt('libx264') == 'yuv420p'
+        assert proxygenerator.proxy_output_pix_fmt('hevc_nvenc') == 'p010le'
+        assert proxygenerator.proxy_output_pix_fmt('libx265') == 'yuv420p10le'
+        assert proxygenerator.proxy_video_tag('h264_qsv') == 'avc1'
+        assert proxygenerator.proxy_video_tag('libx265') == 'hvc1'
+        assert proxygenerator.proxy_video_tag('av1_nvenc') is None
+        opciones = proxygenerator.proxy_encoder_options('h264_nvenc')
+        assert opciones[opciones.index('-tag:v') + 1] == 'avc1', opciones
+        assert '-x265-params' not in opciones, opciones
+
+        try:
+            proxygenerator.get_proxy_encoder('h264', 'hw')
+        except RuntimeError as exc:
+            assert 'H.264' in str(exc) and 'hardware' in str(exc), exc
+        else:
+            raise AssertionError('sin encoder h264 de hardware deberia dar RuntimeError')
+    finally:
+        proxygenerator.ffmpeg_encoder_list, proxygenerator.test_proxy_encoder = guardado
+        proxygenerator._PROXY_ENCODER_CACHE = cache_previo
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         zip_path = os.path.join(tmp, 'sdk.zip')
@@ -300,6 +366,7 @@ def main():
     check_braw_gate()
     check_spec_ships_decoder()
     check_import_status()
+    check_proxy_encoder_selection()
     print('test_braw_sdk_import: OK')
 
 

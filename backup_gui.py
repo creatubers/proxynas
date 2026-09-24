@@ -92,16 +92,11 @@ FFMPEG_HELP = (
 )
 
 
-def _resolve_tool(name):
-    portable_path = os.path.join(PORTABLE_BIN_DIR, name + ('.exe' if IS_WINDOWS else ''))
-    if os.path.isfile(portable_path):
-        return portable_path
-    found = shutil.which(name)
-    return found or portable_path
-
-
-FFMPEG_BIN = _resolve_tool('ffmpeg')
-FFPROBE_BIN = _resolve_tool('ffprobe')
+# La resolucion de herramientas vive en proxygenerator, que es quien lanza
+# ffmpeg: duplicarla hacia que la GUI encontrara ffmpeg en el PATH y el
+# generador de proxies no, y el fallo se veia como un encoder inexistente.
+FFMPEG_BIN = braw_proxy.resolve_tool('ffmpeg')
+FFPROBE_BIN = braw_proxy.resolve_tool('ffprobe')
 APP_NAME = 'Proxynas'
 APP_SUBTITLE = 'Proxies Blackmagic RAW y backup AV1 portable'
 ICON_PATH = os.path.join(SCRIPT_DIR, 'proxynas.png')
@@ -121,6 +116,13 @@ AUDIO_WAV_PCM = 'wav_pcm'
 AUDIO_AAC_M4A = 'aac_m4a'
 AUDIO_OPUS_MP4 = 'opus_mp4'
 DEFAULT_AUDIO_PRESET = AUDIO_NO_TRANSCODE
+
+ACCEL_GPU = 'hw'
+ACCEL_CPU = 'sw'
+ACCEL_LABELS = {
+    ACCEL_GPU: 'GPU (hardware)',
+    ACCEL_CPU: 'CPU (software)',
+}
 
 CODEC_PRESET_LABELS = {
     CODEC_AV1_HW: 'AV1 hardware',
@@ -463,26 +465,6 @@ def select_av1_encoder():
     return None, gpu
 
 
-def get_ffmpeg_video_encoders():
-    """Devuelve los nombres de encoders de vídeo que expone ffmpeg."""
-    try:
-        output = subprocess.check_output(
-            [FFMPEG_BIN, '-hide_banner', '-encoders'],
-            text=True,
-            stderr=subprocess.STDOUT,
-            timeout=10,
-        )
-    except Exception:
-        return set()
-
-    encoders = set()
-    for line in output.splitlines():
-        parts = line.split()
-        if len(parts) >= 2 and parts[0].startswith('V'):
-            encoders.add(parts[1])
-    return encoders
-
-
 def gpu_vendor_order(gpu_name):
     """Ordena proveedores probables sin descartar otros encoders disponibles."""
     gpu = (gpu_name or '').lower()
@@ -575,7 +557,10 @@ def detect_encoder_capabilities(force=False):
         return _ENCODER_CAPABILITIES_CACHE
 
     gpu_name = get_gpu_name()
-    available = get_ffmpeg_video_encoders()
+    available, ffmpeg_error = braw_proxy.ffmpeg_encoder_list()
+    # Si ffmpeg ni responde, decirlo; 'no listado por ffmpeg' para todos los
+    # codecs parecia un problema de los encoders y era de ffmpeg.
+    list_reason = ffmpeg_error or 'no listado por ffmpeg'
     capabilities = {
         'gpu': gpu_name,
         'presets': {},
@@ -589,7 +574,7 @@ def detect_encoder_capabilities(force=False):
         for vendor in gpu_vendor_order(gpu_name):
             encoder = vendor_map[vendor]
             if encoder not in available:
-                tested.append(f'{encoder}: no listado por ffmpeg')
+                tested.append(f'{encoder}: {list_reason}')
                 continue
             ok, detail = test_encoder(encoder)
             tested.append(f'{encoder}: {"OK" if ok else detail}')
@@ -606,7 +591,7 @@ def detect_encoder_capabilities(force=False):
         }
 
     for preset, encoder in SOFTWARE_ENCODERS.items():
-        reason = 'No listado por ffmpeg'
+        reason = list_reason
         selected = None
         tested = []
         if encoder in available:
@@ -618,7 +603,7 @@ def detect_encoder_capabilities(force=False):
             else:
                 reason = f'{encoder}: {detail}'
         else:
-            tested.append(f'{encoder}: no listado por ffmpeg')
+            tested.append(f'{encoder}: {list_reason}')
         capabilities['presets'][preset] = {
             'available': selected is not None,
             'encoder': selected,
@@ -1298,6 +1283,10 @@ class BackupApp:
         self.mode_var = tk.StringVar(value=self.config.get('mode', 'todo'))
         self.transcode_var = tk.BooleanVar(value=self.config.get('transcode', True))
         self.codec_preset_var = tk.StringVar(value=self.config.get('codec_preset', DEFAULT_CODEC_PRESET))
+        self.proxy_codec_var = tk.StringVar(value=self.config.get('proxy_codec', braw_proxy.DEFAULT_PROXY_CODEC))
+        # Por defecto GPU: si el equipo no tiene encoder de hardware validado
+        # para ese codec, la deteccion lo pasa a CPU y deshabilita la opcion.
+        self.proxy_accel_var = tk.StringVar(value=self.config.get('proxy_accel', ACCEL_GPU))
         self.audio_preset_var = tk.StringVar(value=self.config.get('audio_preset', DEFAULT_AUDIO_PRESET))
         self.backup_braw_originals_var = tk.BooleanVar(value=self.config.get('backup_braw_originals', False))
         self.proxy_live_var = tk.BooleanVar(value=False)
@@ -1310,6 +1299,8 @@ class BackupApp:
         self.encoder_capabilities = None
         self.codec_radio_buttons = {}
         self.audio_radio_buttons = {}
+        self.proxy_codec_radio_buttons = {}
+        self.proxy_accel_radio_buttons = {}
 
         self.style = ttk.Style(self.root)
         try:
@@ -1367,6 +1358,8 @@ class BackupApp:
             'mode': self.mode_var.get(),
             'transcode': self.transcode_var.get(),
             'codec_preset': self.codec_preset_var.get(),
+            'proxy_codec': self.proxy_codec_var.get(),
+            'proxy_accel': self.proxy_accel_var.get(),
             'audio_preset': self.audio_preset_var.get(),
             'backup_braw_originals': self.backup_braw_originals_var.get(),
         })
@@ -1861,11 +1854,45 @@ class BackupApp:
         controls = ttk.Frame(parent, style='Card.TFrame')
         controls.grid(row=2, column=0, sticky='sew')
         controls.columnconfigure(0, weight=1)
-        self._make_toggle(controls, 'Modo live', self.proxy_live_var, self._toggle_proxy_live).grid(row=0, column=0, sticky='ew', pady=(0, 12))
+
+        codec_box = ttk.Frame(controls, style='Card.TFrame')
+        codec_box.grid(row=0, column=0, sticky='ew', pady=(0, 12))
+        ttk.Label(codec_box, text='Códec del proxy', style='Muted.TLabel').grid(row=0, column=0, sticky='w', pady=(0, 4))
+
+        families = ttk.Frame(codec_box, style='Card.TFrame')
+        families.grid(row=1, column=0, sticky='w')
+        for column, codec in enumerate(braw_proxy.PROXY_CODECS):
+            radio = ttk.Radiobutton(
+                families,
+                text=braw_proxy.PROXY_CODEC_LABELS[codec],
+                variable=self.proxy_codec_var,
+                value=codec,
+                command=self._on_proxy_codec_change,
+            )
+            radio.grid(row=0, column=column, sticky='w', padx=(0, 14))
+            self.proxy_codec_radio_buttons[codec] = radio
+
+        accelerations = ttk.Frame(codec_box, style='Card.TFrame')
+        accelerations.grid(row=2, column=0, sticky='w', pady=(4, 0))
+        for column, accel in enumerate((ACCEL_GPU, ACCEL_CPU)):
+            radio = ttk.Radiobutton(
+                accelerations,
+                text=ACCEL_LABELS[accel],
+                variable=self.proxy_accel_var,
+                value=accel,
+                command=self._persist_config,
+            )
+            radio.grid(row=0, column=column, sticky='w', padx=(0, 14))
+            self.proxy_accel_radio_buttons[accel] = radio
+
+        self.proxy_codec_status_label = ttk.Label(codec_box, text='Detectando códecs...', style='Muted.TLabel', wraplength=280, justify='left')
+        self.proxy_codec_status_label.grid(row=3, column=0, sticky='w', pady=(6, 0))
+
+        self._make_toggle(controls, 'Modo live', self.proxy_live_var, self._toggle_proxy_live).grid(row=1, column=0, sticky='ew', pady=(0, 12))
         self.proxy_button = self._make_button(controls, 'Crear proxies pendientes', self._start_proxy_creation, kind='primary')
-        self.proxy_button.grid(row=1, column=0, sticky='ew')
+        self.proxy_button.grid(row=2, column=0, sticky='ew')
         self._make_button(controls, 'Importar SDK BRAW (zip)', self._import_braw_sdk).grid(
-            row=2, column=0, sticky='ew', pady=(8, 0)
+            row=3, column=0, sticky='ew', pady=(8, 0)
         )
 
     def _build_backup_panel(self, parent):
@@ -2107,6 +2134,20 @@ class BackupApp:
             if not ok:
                 self._offer_braw_sdk(missing)
                 return
+        codec = self.proxy_codec_var.get()
+        accel = self.proxy_accel_var.get()
+        proxy_caps = (self.encoder_capabilities or {}).get('proxy') or {}
+        chosen = (proxy_caps.get(codec) or {}).get(accel) or {}
+        # Solo se comprueba si la deteccion ya termino: asi no se bloquea la
+        # interfaz, y si aun no hay datos el error lo da el propio trabajo.
+        if proxy_caps and not chosen.get('available'):
+            label = braw_proxy.PROXY_CODEC_LABELS.get(codec, codec)
+            messagebox.showerror(
+                APP_NAME,
+                f"No hay ningún encoder {label} en {ACCEL_LABELS.get(accel, accel)} para los proxies.\n\n"
+                f"{chosen.get('reason') or 'Prueba con otro códec o con CPU.'}",
+            )
+            return
         self._set_proxy_running(True)
         self.proxy_status_var.set('Buscando material sin proxy...')
         threading.Thread(target=self._run_proxy_creation_for_watch_folder, daemon=True).start()
@@ -2127,6 +2168,13 @@ class BackupApp:
             except Exception as exc:
                 self._log(f'Error en reconcile de proxies: {exc}')
 
+            codec = self.proxy_codec_var.get()
+            accel = self.proxy_accel_var.get()
+            encoder_result = braw_proxy.detect_proxy_encoder(codec, accel)
+            if not encoder_result.get('available'):
+                label = braw_proxy.PROXY_CODEC_LABELS.get(codec, codec)
+                raise RuntimeError(f"Sin encoder {label} para proxies: {encoder_result.get('reason')}")
+            self._log(f"Encoder de proxy: {encoder_result['encoder']}")
             jobs = self._find_pending_proxy_jobs()
             if not jobs:
                 self.root.after(0, lambda: self.proxy_status_var.set('Todo actualizado. No hay proxies pendientes.'))
@@ -2138,9 +2186,9 @@ class BackupApp:
                 self._log(f'Proxy {index}/{len(jobs)}: {basename(source_path)}')
                 Path(os.path.dirname(proxy_path)).mkdir(parents=True, exist_ok=True)
                 if source_path.lower().endswith('.braw'):
-                    braw_proxy.create_braw_proxy(source_path, proxy_path)
+                    braw_proxy.create_braw_proxy(source_path, proxy_path, codec, accel)
                 else:
-                    braw_proxy.create_standard_proxy(source_path, proxy_path)
+                    braw_proxy.create_standard_proxy(source_path, proxy_path, codec, accel)
             self.root.after(0, lambda: self.proxy_status_var.set('Proxies creados.'))
             self._log('Proxies finalizados.')
         except Exception as exc:
@@ -2218,6 +2266,13 @@ class BackupApp:
 
             # GPU
             caps = detect_encoder_capabilities(force=True)
+            # H.265/H.264 de proxy son otra familia que los presets de backup,
+            # asi que se validan aparte probando encoders de verdad.
+            caps['proxy'] = {}
+            for codec in braw_proxy.PROXY_CODECS:
+                caps['proxy'][codec] = {}
+                for accel in (ACCEL_GPU, ACCEL_CPU):
+                    caps['proxy'][codec][accel] = braw_proxy.detect_proxy_encoder(codec, accel)
             self.encoder_capabilities = caps
             gpu = caps.get('gpu', '')
             lines.append(f"GPU: {gpu or 'No detectada'}")
@@ -2244,13 +2299,14 @@ class BackupApp:
             braw_ok, braw_missing = check_braw_tools()
             if braw_ok:
                 lines.append("Blackmagic RAW SDK portable: OK")
-                try:
-                    proxy_encoder = braw_proxy.get_proxy_encoder()
-                    lines.append(f"Encoder proxies H.265: {proxy_encoder}")
-                except Exception as exc:
-                    lines.append(f"Encoder proxies H.265: no disponible ({exc})")
             else:
                 lines.append(f"BRAW portable no disponible: {braw_missing}")
+            proxy_caps = caps.get('proxy') or {}
+            for codec in braw_proxy.PROXY_CODECS:
+                for accel in (ACCEL_GPU, ACCEL_CPU):
+                    data = (proxy_caps.get(codec) or {}).get(accel) or {}
+                    nombre = f"{braw_proxy.PROXY_CODEC_LABELS[codec]} {ACCEL_LABELS[accel]}"
+                    lines.append(f"Proxies {nombre}: {data.get('encoder') if data.get('available') else 'no disponible'}")
 
             # Google Drive (Windows)
             gd = find_google_drive_path()
@@ -2290,6 +2346,8 @@ class BackupApp:
         else:
             self.codec_status_label.config(text='No hay códecs de conversión disponibles; se copiará el vídeo original.')
 
+        self._apply_proxy_capabilities(caps.get('proxy') or {})
+
         if status_text:
             self.info_label.config(text=status_text)
         self._on_mode_change()
@@ -2300,6 +2358,32 @@ class BackupApp:
         self._on_mode_change()
 
     def _on_codec_preset_change(self):
+        self._persist_config()
+        if self.encoder_capabilities:
+            self._apply_encoder_capabilities(self.encoder_capabilities)
+
+    def _apply_proxy_capabilities(self, proxy_caps):
+        """Habilita GPU/CPU segun lo que este equipo tenga validado de verdad."""
+        # Sin datos de proxy (deteccion a medias por otra via) se deja la UI
+        # como esta: deshabilitar los radios por falta de datos seria mentir.
+        if not proxy_caps:
+            return
+        codec = self.proxy_codec_var.get()
+        data = proxy_caps.get(codec) or {}
+        for accel, radio in self.proxy_accel_radio_buttons.items():
+            available = (data.get(accel) or {}).get('available')
+            radio.config(state='normal' if available else 'disabled')
+        if not (data.get(ACCEL_GPU) or {}).get('available') and self.proxy_accel_var.get() == ACCEL_GPU:
+            self.proxy_accel_var.set(ACCEL_CPU)
+        chosen = data.get(self.proxy_accel_var.get()) or {}
+        label = braw_proxy.PROXY_CODEC_LABELS.get(codec, codec)
+        if chosen.get('available'):
+            self.proxy_codec_status_label.config(text=f"Seleccionado: {label} ({chosen.get('encoder')})")
+        else:
+            reason = chosen.get('reason') or 'sin encoder compatible en este ffmpeg'
+            self.proxy_codec_status_label.config(text=f"{label}: no disponible ({reason})")
+
+    def _on_proxy_codec_change(self):
         self._persist_config()
         if self.encoder_capabilities:
             self._apply_encoder_capabilities(self.encoder_capabilities)
