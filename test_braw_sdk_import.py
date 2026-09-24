@@ -300,6 +300,16 @@ def check_proxy_encoder_selection():
         assert proxygenerator.detect_proxy_encoder('h264', 'auto')['encoder'] == 'libx264'
         assert not proxygenerator.detect_proxy_encoder('h264', 'hw', force=True)['available']
 
+        # Instalar ffmpeg despues de una deteccion fallida tiene que servir de
+        # algo: mientras la cache siga viva, el panel dice que no hay encoders.
+        stub_listar([], error='ffmpeg no responde en C:/x/ffmpeg.exe')
+        assert not proxygenerator.detect_proxy_encoder('hevc', 'sw')['available']
+        stub_listar(['libx265'])
+        stub_probar({'libx265'})
+        assert not proxygenerator.detect_proxy_encoder('hevc', 'sw')['available'], 'la cache vieja deberia seguir ahi'
+        proxygenerator.reset_proxy_encoder_cache()
+        assert proxygenerator.detect_proxy_encoder('hevc', 'sw')['available'], 'tras borrar la cache, ffmpeg se ve'
+
         # Misma profundidad en todos los codecs de proxy: 10 bits, que es la que
         # ya usaban los proxies antes de poder elegir codec.
         assert proxygenerator.proxy_output_pix_fmt('hevc_nvenc') == 'p010le'

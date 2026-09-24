@@ -85,10 +85,11 @@ BRAW_SDK_HELP = (
 )
 
 FFMPEG_HELP = (
-    'Proxynas descarga FFmpeg automáticamente al arrancar, así que lo más\n'
-    'probable es que esa descarga no llegara a completarse.\n\n'
-    'Cierra y vuelve a abrir Proxynas para reintentarla. Si el problema\n'
-    'continúa, comprueba la conexión a Internet.'
+    'Proxynas descarga FFmpeg automáticamente la primera vez.\n'
+    'Esta vez la descarga no ha funcionado: comprueba la conexión a\n'
+    'Internet y vuelve a abrir Proxynas.\n\n'
+    'Si tu red bloquea GitHub, descarga el zip a mano y copia ffmpeg.exe y\n'
+    'ffprobe.exe en la carpeta "portable\\bin", junto a Proxynas.exe.'
 )
 
 
@@ -361,7 +362,10 @@ def ensure_ffmpeg():
     archive_path = os.path.join(tempfile.gettempdir(), 'proxynas-ffmpeg.zip')
     try:
         os.makedirs(PORTABLE_BIN_DIR, exist_ok=True)
-        urllib.request.urlretrieve(FFMPEG_DOWNLOAD_URL, archive_path)
+        # urlretrieve no admite timeout, y una descarga colgada dejaria la app
+        # esperando para siempre.
+        with urllib.request.urlopen(FFMPEG_DOWNLOAD_URL, timeout=60) as response, open(archive_path, 'wb') as destination:
+            shutil.copyfileobj(response, destination)
         with zipfile.ZipFile(archive_path) as archive:
             names = archive.namelist()
             for filename, target in (('ffmpeg.exe', FFMPEG_BIN), ('ffprobe.exe', FFPROBE_BIN)):
@@ -2113,6 +2117,15 @@ class BackupApp:
             self.proxy_status_var.set('SDK BRAW listo. Ya puedes crear proxies de .braw.')
             messagebox.showinfo(APP_NAME, 'SDK BRAW importado correctamente.')
 
+    def _offer_ffmpeg(self, missing):
+        """La descarga automática no funcionó: guiar a la descarga manual."""
+        if messagebox.askyesno(
+            APP_NAME,
+            f'No se encuentra {missing}.\n\n{FFMPEG_HELP}'
+            '\n\n¿Quieres abrir la página de descarga en el navegador?',
+        ):
+            webbrowser.open(FFMPEG_DOWNLOAD_URL)
+
     def _offer_braw_sdk(self, missing=None):
         """Guía para instalar el SDK, que no se puede redistribuir con la app."""
         detail = f'Para trabajar con BRAW, falta lo siguiente:\n{missing}\n\n' if missing else ''
@@ -2150,7 +2163,7 @@ class BackupApp:
             return
         ff_ok, ff_missing = check_ffmpeg()
         if not ff_ok:
-            messagebox.showerror(APP_NAME, f'No se encuentra {ff_missing}.\n\n{FFMPEG_HELP}')
+            self._offer_ffmpeg(ff_missing)
             return
         if contains_files(root_dir, BRAW_EXTENSIONS):
             ok, missing = check_braw_tools()
@@ -2318,6 +2331,32 @@ class BackupApp:
                 pass
             self.tray_icon = None
 
+    def download_ffmpeg_if_needed(self):
+        """Trae FFmpeg en segundo plano si no hay ninguno: la ventana ya está pintada."""
+        if check_ffmpeg()[0]:
+            return
+        self.proxy_status_var.set('Descargando FFmpeg (solo la primera vez)...')
+        self._log('Descargando FFmpeg...')
+
+        def worker():
+            ok = ensure_ffmpeg()
+
+            def done():
+                if ok:
+                    # La deteccion inicial corrio sin ffmpeg y dejo la cache
+                    # llena de "no disponible": sin borrarla, el panel seguiria
+                    # diciendo que no hay encoders.
+                    braw_proxy.reset_proxy_encoder_cache()
+                    self.proxy_status_var.set('FFmpeg listo.')
+                    self._detect_defaults()
+                else:
+                    self.proxy_status_var.set(
+                        'No se pudo descargar FFmpeg. Comprueba la conexión a Internet.'
+                    )
+            self.root.after(0, done)
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _detect_defaults(self):
         """Detecta GPU y Google Drive en segundo plano."""
         def detect():
@@ -2440,7 +2479,12 @@ class BackupApp:
         if chosen.get('available'):
             self.proxy_codec_status_label.config(text=f"Seleccionado: {label} ({chosen.get('encoder')})")
         else:
-            reason = chosen.get('reason') or 'sin encoder compatible en este ffmpeg'
+            # Sin ffmpeg, el motivo real es una ruta con un WinError detrás que
+            # ocupa media caja y no ayuda; lo útil es decir que falta FFmpeg.
+            if not check_ffmpeg()[0]:
+                reason = 'falta FFmpeg'
+            else:
+                reason = chosen.get('reason') or 'sin encoder compatible en este ffmpeg'
             self.proxy_codec_status_label.config(text=f"{label}: no disponible ({reason})")
 
     def _on_proxy_codec_change(self):
@@ -2556,7 +2600,7 @@ class BackupApp:
         if needs_ffmpeg:
             ff_ok, ff_missing = check_ffmpeg()
             if not ff_ok:
-                messagebox.showerror("Error", f'No se encuentra {ff_missing}.\n\n{FFMPEG_HELP}')
+                self._offer_ffmpeg(ff_missing)
                 return
 
         if self.transcode_var.get() and mode in ('todo', 'video'):
@@ -2760,35 +2804,3 @@ def run_cli():
     s = p.stats
     print(f"\nVídeos: {s['videos']} | Audio: {s['audio']} | Imágenes: {s['images']}")
     print(f"Copiados: {s['copied']} | Saltados: {s['skipped']} | Errores: {s['errors']}")
-
-
-# ─────────────────────────────────────────────
-# Entry point
-# ─────────────────────────────────────────────
-
-def create_root():
-    try:
-        from tkinterdnd2 import TkinterDnD
-        return TkinterDnD.Tk()
-    except Exception:
-        return tk.Tk()
-
-
-if __name__ == '__main__':
-    enable_high_dpi()
-    if not ensure_ffmpeg():
-        message = 'No se pudieron descargar ffmpeg/ffprobe. Comprueba la conexión a Internet.'
-        if '--cli' in sys.argv:
-            print(message, file=sys.stderr)
-            raise SystemExit(1)
-        root = create_root()
-        messagebox.showerror(APP_NAME, message)
-        root.destroy()
-        raise SystemExit(1)
-    if '--cli' in sys.argv:
-        run_cli()
-    else:
-        root = create_root()
-        app = BackupApp(root)
-        root.mainloop()
-

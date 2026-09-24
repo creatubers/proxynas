@@ -2,7 +2,7 @@
 import sys
 import tkinter as tk
 
-from backup_gui import BackupApp, enable_high_dpi, run_cli
+from backup_gui import BackupApp, enable_high_dpi, ensure_ffmpeg, run_cli
 
 
 def create_root():
@@ -16,8 +16,15 @@ def create_root():
 if __name__ == "__main__":
     enable_high_dpi()
     if "--cli" in sys.argv:
+        # Descargar ffmpeg aqui, en la unica entrada del programa, es lo que
+        # hace que la descarga ocurra en el .exe y no solo al ejecutar el
+        # modulo suelto.
+        if not ensure_ffmpeg():
+            print('No se pudo descargar FFmpeg. Comprueba la conexión a Internet.', file=sys.stderr)
+            raise SystemExit(1)
         run_cli()
     else:
         root = create_root()
         app = BackupApp(root)
+        app.download_ffmpeg_if_needed()
         root.mainloop()

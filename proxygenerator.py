@@ -340,6 +340,11 @@ def detect_proxy_encoder(codec=DEFAULT_PROXY_CODEC, accel=DEFAULT_PROXY_ACCEL, f
     return result
 
 
+def reset_proxy_encoder_cache():
+    """Olvida la deteccion hecha antes de tener ffmpeg: esos resultados ya no valen."""
+    _PROXY_ENCODER_CACHE.clear()
+
+
 def get_proxy_encoder(codec=DEFAULT_PROXY_CODEC, accel=DEFAULT_PROXY_ACCEL):
     result = detect_proxy_encoder(codec, accel)
     if not result.get("available"):
