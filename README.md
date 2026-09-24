@@ -46,8 +46,8 @@ button in the proxies panel copies `BlackmagicRawAPI.dll`, `DecoderCUDA.dll`,
 x64 ones are preferred.
 
 `.braw` also needs `braw_decode.exe` in `portable/bin/`. It is **not** part of
-the SDK: it is Proxynas's own decoder, built from
-`tools/braw_decode/braw_decode.cpp` against the SDK headers.
+the SDK: it is Proxynas's own decoder (source in `tools/braw_decode/`, built
+against the SDK headers), and the Windows builds already include it.
 
 Everything else works without it: non-BRAW media is handled by FFmpeg alone.
 `python test_braw_sdk_import.py` checks the zip import picks the right files.
@@ -70,4 +70,6 @@ when present.
 ## License
 
 MIT — see `LICENSE`. FFmpeg and the Blackmagic RAW SDK are separate products
-with their own licenses and are not covered by it.
+with their own licenses and are not covered by it. Proxynas is not
+affiliated with or endorsed by Blackmagic Design, and Blackmagic RAW is a
+trademark of Blackmagic Design Pty. Ltd.
