@@ -74,6 +74,28 @@ def check_folder_warning():
         backup_gui.braw_proxy.SDK_DIR = real_sdk
 
 
+
+def check_scan_depth():
+    """El aviso limita la profundidad; los gates de proxy/backup no."""
+    import backup_gui
+
+    with tempfile.TemporaryDirectory() as tmp:
+        shallow = os.path.join(tmp, 'DCIM', '100MEDIA', 'clip.braw')
+        deep = os.path.join(tmp, 'a', 'b', 'c', 'd', 'e', 'hondo.braw')
+        for path in (shallow, deep):
+            os.makedirs(os.path.dirname(path))
+            open(path, 'wb').close()
+
+        assert backup_gui.contains_files(tmp, backup_gui.BRAW_EXTENSIONS, max_depth=backup_gui.BRAW_SCAN_DEPTH)
+        assert backup_gui.contains_files(tmp, backup_gui.BRAW_EXTENSIONS)
+
+        os.remove(shallow)
+        assert not backup_gui.contains_files(tmp, backup_gui.BRAW_EXTENSIONS, max_depth=backup_gui.BRAW_SCAN_DEPTH), \
+            'no deberia bajar hasta el fichero hondo'
+        assert backup_gui.contains_files(tmp, backup_gui.BRAW_EXTENSIONS), \
+            'el escaneo completo si debe encontrarlo'
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         zip_path = os.path.join(tmp, 'sdk.zip')
@@ -112,6 +134,7 @@ def main():
             raise AssertionError('un zip sin DLL del SDK deberia dar ValueError')
 
     check_folder_warning()
+    check_scan_depth()
     print('test_braw_sdk_import: OK')
 
 

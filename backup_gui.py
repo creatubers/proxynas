@@ -36,6 +36,10 @@ from proxyregistry import ProxyRegistry
 AUDIO_EXTENSIONS = {'.wav', '.flac'}
 IMAGE_EXTENSIONS = {'.tiff', '.rw2', '.cr2', '.arw'}
 BRAW_EXTENSIONS = {'.braw'}
+# El aviso al elegir carpeta no baja mas de aqui: las tarjetas de camara son
+# poco profundas y asi no se recorre entero un archivo grande (solo afecta al aviso,
+# no a los gates de proxy/backup, que siguen mirando el arbol completo).
+BRAW_SCAN_DEPTH = 3
 VIDEO_EXTENSIONS = {'.mov', '.webm', '.avi', '.mp4', '.mkv', '.mpg', '.mpeg', '.wmv', '.mts'} | BRAW_EXTENSIONS
 ALL_PROCESSED_EXTENSIONS = AUDIO_EXTENSIONS | IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
 
@@ -718,8 +722,10 @@ def atomic_copyfile(source_path, output_path):
         raise
 
 
-def contains_files(root_dir, extensions):
+def contains_files(root_dir, extensions, max_depth=None):
     for root, dirs, files in os.walk(root_dir):
+        if max_depth is not None and os.path.relpath(root, root_dir).count(os.sep) >= max_depth:
+            dirs[:] = []
         for filename in files:
             if os.path.splitext(filename)[1].lower() in extensions:
                 return True
@@ -2062,7 +2068,7 @@ class BackupApp:
 
     def _check_braw_sdk_for_folder(self, folder):
         """Avisa solo si la carpeta elegida trae .braw y falta el SDK."""
-        if not contains_files(folder, BRAW_EXTENSIONS):
+        if not contains_files(folder, BRAW_EXTENSIONS, max_depth=BRAW_SCAN_DEPTH):
             return
         missing = [
             os.path.basename(path)

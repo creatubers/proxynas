@@ -40,7 +40,10 @@ Only `.braw` files need it. When you point Proxynas at a folder that contains
 `.braw` files and the SDK is missing, it shows a dialog with the download page
 (`https://www.blackmagicdesign.com/support/latest-download/braw-sdk/windows`) and
 offers to import the zip you downloaded. Folders without `.braw` are never
-checked, so it does not nag over FFmpeg-only material. Importing copies `BlackmagicRawAPI.dll`,
+checked, so it does not nag over FFmpeg-only material. That check only looks a
+few levels deep (camera cards are shallow) to avoid walking a whole archive; if
+it misses a deeply nested `.braw`, the proxy or transcode run that needs it
+shows the same dialog. Importing copies `BlackmagicRawAPI.dll`,
 `DecoderCUDA.dll`, `DecoderOpenCL.dll` and the `InstructionSetServicesAVX*.dll`
 files into `portable/sdk/`; the **"Importar SDK BRAW (zip)"** button in the
 proxies panel does the same thing by hand. Any recent SDK version works: files
