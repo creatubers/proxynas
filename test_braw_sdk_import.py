@@ -4,6 +4,7 @@ Ejecutar con:  python test_braw_sdk_import.py
 """
 
 import os
+import struct
 import tempfile
 import types
 import zipfile
@@ -96,6 +97,45 @@ def check_scan_depth():
             'el escaneo completo si debe encontrarlo'
 
 
+
+def fake_pe(machine):
+    """PE minimo con la arquitectura pedida (0x8664 = x64, 0xAA64 = ARM64)."""
+    data = bytearray(0x100)
+    struct.pack_into("<I", data, 0x3C, 0x80)
+    struct.pack_into("<H", data, 0x84, machine)
+    return bytes(data)
+
+
+def check_sdk_tree_picker():
+    """Del arbol extraido del instalador se elige el x64, nunca el ARM."""
+    import backup_gui  # noqa: F401  (no tocar la config real)
+    import proxygenerator as pg
+
+    with tempfile.TemporaryDirectory() as tmp:
+        def put(rel, machine):
+            path = os.path.join(tmp, rel)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as handle:
+                handle.write(fake_pe(machine))
+
+        put("Blackmagic RAW SDK/Win/Libraries/BlackmagicRawAPI.dll", 0x8664)
+        put("Blackmagic RAW SDK/Win/Libraries/ARM64/BlackmagicRawAPI.dll", 0xAA64)
+        put("Blackmagic RAW SDK/Win/Libraries/ARM64EC/BlackmagicRawAPI.dll", 0x8664)
+        put("Blackmagic RAW Player/BlackmagicRawAPI/BlackmagicRawAPI.dll", 0x8664)
+
+        chosen = pg.sdk_folder_in_tree(tmp)
+        assert chosen, "deberia encontrar la carpeta con el DLL x64"
+        assert "arm" not in chosen.lower(), chosen
+        assert chosen.endswith(os.path.join("Win", "Libraries")), chosen
+
+        solo_arm = os.path.join(tmp, "solo_arm")
+        arm_path = os.path.join(solo_arm, "ARM64", "BlackmagicRawAPI.dll")
+        os.makedirs(os.path.dirname(arm_path))
+        with open(arm_path, "wb") as handle:
+            handle.write(fake_pe(0xAA64))
+        assert pg.sdk_folder_in_tree(solo_arm) is None, "con solo ARM no hay carpeta valida"
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         zip_path = os.path.join(tmp, 'sdk.zip')
@@ -135,6 +175,7 @@ def main():
 
     check_folder_warning()
     check_scan_depth()
+    check_sdk_tree_picker()
     print('test_braw_sdk_import: OK')
 
 

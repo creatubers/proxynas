@@ -2032,6 +2032,8 @@ class BackupApp:
         )
         if not zip_path:
             return
+        self.proxy_status_var.set('Importando el SDK BRAW (puede tardar unos segundos)...')
+        self.root.update_idletasks()
         try:
             result = braw_proxy.import_braw_sdk(zip_path)
         except Exception as exc:

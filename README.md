@@ -49,6 +49,10 @@ files into `portable/sdk/`; the **"Importar SDK BRAW (zip)"** button in the
 proxies panel does the same thing by hand. Any recent SDK version works: files
 are matched by name and the x64 ones are preferred.
 
+The Windows download is a zip of `.msi` installers rather than loose DLLs, so
+Proxynas extracts them with `msiexec /a` (nothing is installed) and takes the
+x64 copies, never the ARM64 ones.
+
 `.braw` also needs `braw_decode.exe` in `portable/bin/`. It is **not** part of
 the SDK: it is Proxynas's own decoder (source in `tools/braw_decode/`, built
 against the SDK headers), and the Windows builds already include it.

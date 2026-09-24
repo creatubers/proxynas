@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import zipfile
@@ -78,29 +79,96 @@ def braw_sdk_entries(zip_names):
     picked = {}
     for name in zip_names:
         base = os.path.basename(name).lower()
-        is_dll = base.endswith(".dll") and (
-            base in wanted_dlls or base.startswith("instructionsetservices")
-        )
-        if not (is_dll or base == "braw_decode.exe"):
+        if not (_is_wanted_dll(base) or base == "braw_decode.exe"):
             continue
         if base not in picked or _arch_rank(name) > _arch_rank(picked[base]):
             picked[base] = name
     return picked
 
 
+def _is_wanted_dll(name):
+    lower = name.lower()
+    return lower.endswith(".dll") and (
+        lower in tuple(dll.lower() for dll in BRAW_SDK_DLLS)
+        or lower.startswith("instructionsetservices")
+    )
+
+
+def _pe_machine(path):
+    """Arquitectura del PE (0x8664 = x64) o None si no se puede leer."""
+    try:
+        with open(path, "rb") as handle:
+            offset = int.from_bytes(handle.read(0x40)[0x3C:0x40], "little")
+            handle.seek(offset + 4)
+            return int.from_bytes(handle.read(2), "little")
+    except OSError:
+        return None
+
+
+def sdk_folder_in_tree(root):
+    """Directorio no-ARM con un BlackmagicRawAPI.dll x64 (prefiere el del SDK)."""
+    candidates = []
+    for base, dirs, files in os.walk(root):
+        if "arm" in base.lower():
+            dirs[:] = []
+            continue
+        if "blackmagicrawapi.dll" not in {name.lower() for name in files}:
+            continue
+        if _pe_machine(os.path.join(base, "BlackmagicRawAPI.dll")) != 0x8664:
+            continue
+        lowered = base.lower()
+        rank = 2 if "libraries" in lowered else 1 if "sdk" in lowered else 0
+        candidates.append((rank, base))
+    return max(candidates)[1] if candidates else None
+
+
+def _copy_wanted_dlls(source_dir):
+    copied = []
+    for name in sorted(os.listdir(source_dir)):
+        if _is_wanted_dll(name):
+            copied.append(shutil.copyfile(os.path.join(source_dir, name),
+                                         os.path.join(SDK_DIR, name)))
+    return copied
+
+
+def _import_from_installer_zip(archive):
+    """El zip de Windows trae instaladores (.msi), no DLL sueltos.
+
+    Se extraen con msiexec /a (sin instalar nada) y se copian los DLL de dentro.
+    """
+    installers = [name for name in archive.namelist()
+                  if name.lower().endswith(".msi")
+                  and "arm" not in os.path.basename(name).lower()]
+    if not installers:
+        raise ValueError("El zip no trae ni DLL ni instalador (.msi) del SDK BRAW.")
+    installer = max(installers, key=lambda name: _arch_rank(os.path.basename(name)))
+    with tempfile.TemporaryDirectory(prefix="proxynas-braw-sdk-") as work:
+        msi = _extract_member(archive, installer, os.path.join(work, "sdk.msi"))
+        extracted = os.path.join(work, "extracted")
+        done = subprocess.run(["msiexec", "/a", msi, "/qn", f"TARGETDIR={extracted}"],
+                              capture_output=True)
+        if done.returncode != 0:
+            raise ValueError(f"msiexec no pudo extraer el SDK (codigo {done.returncode}).")
+        folder = sdk_folder_in_tree(extracted)
+        if not folder:
+            raise ValueError("El instalador no traia un BlackmagicRawAPI.dll x64.")
+        copied = _copy_wanted_dlls(folder)
+    return copied, {os.path.basename(path).lower(): path for path in copied}
+
+
 def import_braw_sdk(zip_path):
-    """Copia a portable/ los ficheros BRAW que haya dentro de un zip del SDK."""
+    """Copia a portable/ los DLL del SDK, venga el zip con DLL o con instaladores."""
     with zipfile.ZipFile(zip_path) as archive:
         picked = braw_sdk_entries(archive.namelist())
         dlls = {base: name for base, name in picked.items() if base.endswith(".dll")}
-        if not dlls:
-            raise ValueError("El zip no contiene ningun DLL del SDK BRAW.")
-
         os.makedirs(SDK_DIR, exist_ok=True)
-        copied = [
-            _extract_member(archive, name, os.path.join(SDK_DIR, base))
-            for base, name in sorted(dlls.items())
-        ]
+        if dlls:
+            copied = [
+                _extract_member(archive, name, os.path.join(SDK_DIR, base))
+                for base, name in sorted(dlls.items())
+            ]
+        else:
+            copied, dlls = _import_from_installer_zip(archive)
 
         decoder_name = picked.get("braw_decode.exe")
         if decoder_name:
@@ -112,7 +180,6 @@ def import_braw_sdk(zip_path):
         "missing": [name for name in BRAW_SDK_DLLS if name.lower() not in dlls],
         "decoder": os.path.isfile(BRAW_DECODE),
     }
-
 
 def get_ffmpeg_video_encoders():
     try:
