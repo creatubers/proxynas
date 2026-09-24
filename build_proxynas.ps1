@@ -18,16 +18,6 @@ if ($LASTEXITCODE -ne 0) { throw "Fallo al instalar las dependencias de build." 
 & $venvPython -m PyInstaller --noconfirm Proxynas.spec
 if ($LASTEXITCODE -ne 0) { throw "Fallo PyInstaller." }
 
-# El decodificador BRAW es nuestro (tools/braw_decode), no del SDK, asi que va en el build.
-$decoder = "tools\braw_decode\braw_decode.exe"
-$decoderDir = "dist\Proxynas\portable\bin"
-if (Test-Path $decoder) {
-    New-Item -ItemType Directory -Force -Path $decoderDir | Out-Null
-    Copy-Item $decoder $decoderDir -Force
-} else {
-    Write-Warning "Falta ${decoder}: el build no soportara ficheros .braw."
-}
-
 Write-Host ""
 Write-Host "Build listo: dist\Proxynas\Proxynas.exe"
 Write-Host "La carpeta dist\Proxynas contiene el ejecutable y todas las dependencias empaquetadas."

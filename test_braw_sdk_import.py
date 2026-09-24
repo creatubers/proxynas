@@ -191,6 +191,72 @@ def check_braw_gate():
         backup_gui.webbrowser.open = real_open
 
 
+def check_spec_ships_decoder():
+    """El bundle tiene que llevar braw_decode.exe a portable/bin.
+
+    Si esto se rompe, el .braw deja de funcionar en el zip publicado: la app
+    busca el decodificador en <app>/portable/bin, no junto al .exe.
+    """
+    root = os.path.dirname(os.path.abspath(proxygenerator.__file__))
+    spec = open(os.path.join(root, "Proxynas.spec"), encoding="utf-8").read()
+    assert "tools/braw_decode/braw_decode.exe" in spec, spec
+    assert "'portable/bin'" in spec, spec
+    assert os.path.isfile(os.path.join(root, "tools", "braw_decode", "braw_decode.exe")), \
+        "hace falta el binario para que el bundle lo copie"
+
+
+def check_import_status():
+    """Al terminar el import el estado deja de decir "Importando..."; antes se quedaba asi."""
+    import backup_gui
+
+    class StatusVar:
+        def __init__(self):
+            self.value = None
+
+        def set(self, value):
+            self.value = value
+
+    with tempfile.TemporaryDirectory() as tmp:
+        names = ("SDK_DIR", "BIN_DIR", "BRAW_DECODE")
+        real = {name: getattr(proxygenerator, name) for name in names}
+        real_hooks = (backup_gui.filedialog.askopenfilename, backup_gui.messagebox.showinfo,
+                      backup_gui.messagebox.showwarning, backup_gui.messagebox.showerror)
+        told = []
+        try:
+            proxygenerator.SDK_DIR = os.path.join(tmp, "sdk")
+            proxygenerator.BIN_DIR = os.path.join(tmp, "bin")
+            proxygenerator.BRAW_DECODE = os.path.join(tmp, "bin", "braw_decode.exe")
+            backup_gui.messagebox.showinfo = lambda *a, **k: told.append("info")
+            backup_gui.messagebox.showwarning = lambda *a, **k: told.append("warn")
+            backup_gui.messagebox.showerror = lambda *a, **k: told.append("error")
+
+            without_decoder = {name: data for name, data in SDK_MEMBERS.items()
+                               if not name.endswith("braw_decode.exe")}
+            for label, members, expected in (("completo", SDK_MEMBERS, "listo"),
+                                             ("sin_decoder", without_decoder, "incompleto")):
+                zip_path = os.path.join(tmp, label + ".zip")
+                write_zip(zip_path, members)
+                backup_gui.filedialog.askopenfilename = lambda **kw: zip_path
+                if os.path.isfile(proxygenerator.BRAW_DECODE):
+                    os.remove(proxygenerator.BRAW_DECODE)
+
+                stub = types.SimpleNamespace(
+                    proxy_status_var=StatusVar(),
+                    root=types.SimpleNamespace(update_idletasks=lambda: None),
+                    _log=lambda message: None,
+                )
+                backup_gui.BackupApp._import_braw_sdk(stub)
+                status = stub.proxy_status_var.value
+                assert status and not status.startswith("Importando"), (label, status)
+                assert expected in status, (label, status)
+        finally:
+            for name, value in real.items():
+                setattr(proxygenerator, name, value)
+            (backup_gui.filedialog.askopenfilename, backup_gui.messagebox.showinfo,
+             backup_gui.messagebox.showwarning, backup_gui.messagebox.showerror) = real_hooks
+    assert told, "deberia haber avisado al usuario"
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         zip_path = os.path.join(tmp, 'sdk.zip')
@@ -232,6 +298,8 @@ def main():
     check_scan_depth()
     check_sdk_tree_picker()
     check_braw_gate()
+    check_spec_ships_decoder()
+    check_import_status()
     print('test_braw_sdk_import: OK')
 
 

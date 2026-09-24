@@ -12,7 +12,10 @@ a = Analysis(
     ['Proxynas.py'],
     pathex=[str(root)] + [str(root / name) for name in bundled],
     binaries=[],
-    datas=[('proxynas.png', '.'), ('proxynas.ico', '.')]
+    datas=[('proxynas.png', '.'), ('proxynas.ico', '.'),
+           # El decodificador es nuestro (no es del SDK) y la app lo busca en
+           # <app>/portable/bin, asi que lo pone el propio bundle.
+           ('tools/braw_decode/braw_decode.exe', 'portable/bin')]
     + [(name, name) for name in bundled],
     hiddenimports=[
         'pystray',

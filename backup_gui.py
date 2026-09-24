@@ -2044,19 +2044,23 @@ class BackupApp:
         try:
             result = braw_proxy.import_braw_sdk(zip_path)
         except Exception as exc:
+            self.proxy_status_var.set('No se pudo importar el SDK BRAW.')
             messagebox.showerror(APP_NAME, f'No se pudo importar el SDK BRAW:\n{exc}')
             return
 
         lines = [f'Copiado: {os.path.basename(path)}' for path in result['copied']]
         if result['missing']:
-            lines.append('No estaba en el zip: ' + ', '.join(result['missing']))
+            lines.append('No se encontró en el zip: ' + ', '.join(result['missing']))
         if not result['decoder']:
-            lines.append('Falta braw_decode.exe en portable/bin/ (lo trae el build de Proxynas, no el SDK).')
+            lines.append('Falta el decodificador braw_decode.exe en portable/bin/. No forma parte del SDK:\n'
+                         'lo incluye Proxynas, así que descarga de nuevo la última versión.')
         message = '\n'.join(lines)
         self._log(message)
         if result['missing'] or not result['decoder']:
+            self.proxy_status_var.set('El SDK BRAW quedó incompleto. Revisa el aviso.')
             messagebox.showwarning(APP_NAME, message)
         else:
+            self.proxy_status_var.set('SDK BRAW listo. Ya puedes crear proxies de .braw.')
             messagebox.showinfo(APP_NAME, 'SDK BRAW importado correctamente.')
 
     def _offer_braw_sdk(self, missing=None):
