@@ -42,13 +42,18 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # UPX empaqueta el .exe y dispara heuristicas de antivirus, y aqui no
+    # compensa: la app carga rapido igual.
+    upx=False,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    # Un .exe sin recurso de version suma puntos en las heuristicas de
+    # Defender/SmartScreen de los builds sin firmar.
+    version='version_info.txt',
     icon='proxynas.ico',
 )
 coll = COLLECT(
@@ -57,7 +62,7 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     name='Proxynas',
 )

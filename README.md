@@ -75,6 +75,23 @@ which hardware encoders actually work on this machine and writes a report into
 Produces `dist/Proxynas/`. `portable/` and `vendor/` are bundled into the build
 when present.
 
+## Antivirus
+
+The Windows build is unsigned. SmartScreen warns on first launch, and Windows
+Defender or Chrome may flag `Proxynas.exe` as `Trojan:Win32/Wacatac.H!ml`.
+That is a false positive: it is Defender's machine-learning heuristic firing
+on unsigned PyInstaller executables, not a real detection. The build avoids
+UPX and embeds a version resource to lower the odds, but only a code-signing
+certificate removes it for good.
+
+- Chrome: open `chrome://downloads` and choose "Keep dangerous file".
+- Defender: Windows Security -> Protection history -> select the detection ->
+  Allow, or add an exclusion for the unzipped folder.
+- `curl -L -o Proxynas-win64.zip <release url>` skips the browser-side block.
+
+False positives can also be reported to Microsoft:
+<https://www.microsoft.com/en-us/wdsi/filesubmission>.
+
 ## License
 
 MIT — see `LICENSE`. FFmpeg and the Blackmagic RAW SDK are separate products
