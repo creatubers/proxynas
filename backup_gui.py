@@ -41,6 +41,24 @@ ALL_PROCESSED_EXTENSIONS = AUDIO_EXTENSIONS | IMAGE_EXTENSIONS | VIDEO_EXTENSION
 IS_WINDOWS = platform.system() == 'Windows'
 IS_LINUX = platform.system() == 'Linux'
 
+
+# ffmpeg, ffprobe y braw_decode son aplicaciones de consola: en un ejecutable
+# sin consola cada llamada abre una ventana que parpadea. Todos los procesos
+# hijos pasan por Popen, asi que se parchea ahi una sola vez en lugar de
+# repetir creationflags en cada subprocess.run del proyecto.
+def _hide_child_console_windows():
+    original_init = subprocess.Popen.__init__
+
+    def patched_init(self, *args, **kwargs):
+        kwargs['creationflags'] = kwargs.get('creationflags', 0) | subprocess.CREATE_NO_WINDOW
+        original_init(self, *args, **kwargs)
+
+    subprocess.Popen.__init__ = patched_init
+
+
+if IS_WINDOWS:
+    _hide_child_console_windows()
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 VENDOR_DIR = os.path.join(SCRIPT_DIR, 'vendor')
 if os.path.isdir(VENDOR_DIR) and VENDOR_DIR not in sys.path:
