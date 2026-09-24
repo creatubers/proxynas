@@ -526,7 +526,9 @@ def get_braw_info(source_path):
         BRAW_SCALE,
         source_path,
     ]
-    result = subprocess.run(command, capture_output=True, text=True, check=True)
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise RuntimeError(process_error_message("braw_decode", result.returncode, [result.stderr.strip()]))
     return json.loads(result.stdout)
 
 
@@ -638,7 +640,7 @@ def create_braw_proxy(source_path, output_path, codec=DEFAULT_PROXY_CODEC, accel
         print(decoder_errors)
     if decoder_return != 0:
         remove_partial_output(output_path)
-        raise RuntimeError(f"braw_decode finalizó con código {decoder_return}")
+        raise RuntimeError(process_error_message("braw_decode", decoder_return, [decoder_errors]))
     if ffmpeg_return != 0:
         remove_partial_output(output_path)
         raise RuntimeError(process_error_message("ffmpeg", ffmpeg_return, ffmpeg_output))

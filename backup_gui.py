@@ -1371,6 +1371,7 @@ class BackupApp:
 
     def _on_close(self):
         self._persist_config()
+        self._stop_tray_icon()
         self.root.destroy()
 
     def _toggle_dark_mode(self):
@@ -1588,6 +1589,13 @@ class BackupApp:
                 padx=12,
                 pady=10,
                 font=('Cascadia Mono', 9) if IS_WINDOWS else ('monospace', 9),
+            )
+        if hasattr(self, 'proxy_status_text'):
+            self.proxy_status_text.configure(
+                background=c['surface_2'],
+                foreground=c['text'],
+                selectbackground=c['accent'],
+                selectforeground='#ffffff',
             )
         if hasattr(self, 'drop_canvas'):
             self._draw_drop_zone()
@@ -1882,7 +1890,13 @@ class BackupApp:
         self._subtle_frames.append(status_box)
         status_box.grid(row=2, column=0, sticky='ew', pady=(14, 14))
         self.proxy_status_var = tk.StringVar(value='Selecciona una carpeta y crea proxies pendientes.')
-        ttk.Label(status_box, textvariable=self.proxy_status_var, style='Status.TLabel', wraplength=520, justify='left').pack(anchor='w')
+        self.proxy_status_text = tk.Text(
+            status_box, height=3, wrap='word', bd=0, relief='flat', highlightthickness=0,
+            cursor='arrow', takefocus=0, font=('Segoe UI', 9), padx=0, pady=0,
+        )
+        self.proxy_status_text.pack(fill='x', anchor='w')
+        self.proxy_status_var.trace_add('write', lambda *_: self._sync_proxy_status_text())
+        self._sync_proxy_status_text()
 
         controls = ttk.Frame(parent, style='Card.TFrame')
         controls.grid(row=3, column=0, sticky='ew')
@@ -1896,6 +1910,13 @@ class BackupApp:
 
         # Hueco flexible: se lleva el alto sobrante de la tarjeta.
         ttk.Frame(parent, style='Card.TFrame').grid(row=4, column=0, sticky='nsew')
+
+    def _sync_proxy_status_text(self):
+        """El estado va en un Text de solo lectura: asi se puede seleccionar y copiar."""
+        self.proxy_status_text.configure(state='normal')
+        self.proxy_status_text.delete('1.0', 'end')
+        self.proxy_status_text.insert('1.0', self.proxy_status_var.get())
+        self.proxy_status_text.configure(state='disabled')
 
     def _build_backup_panel(self, parent):
         parent.columnconfigure(0, weight=1)
@@ -2244,21 +2265,58 @@ class BackupApp:
                 return
 
             def show_window(_icon=None, _item=None):
-                self.root.after(0, self.root.deiconify)
+                # pystray llama a esta funcion al pulsar el icono de la bandeja,
+                # porque es el elemento por defecto del menu (default=True).
+                self.root.after(0, self._show_window_from_tray)
 
-            def quit_app(icon=None, _item=None):
-                if icon:
-                    icon.stop()
+            def quit_app(_icon=None, _item=None):
+                self._stop_tray_icon()
                 self.root.after(0, self.root.quit)
 
             image = Image.open(ICON_PATH) if os.path.isfile(ICON_PATH) else Image.new('RGBA', (64, 64), (31, 111, 235, 255))
-            menu = pystray.Menu(pystray.MenuItem('Mostrar Proxynas', show_window), pystray.MenuItem('Salir', quit_app))
+            menu = pystray.Menu(
+                pystray.MenuItem('Mostrar Proxynas', show_window, default=True),
+                pystray.MenuItem('Salir', quit_app),
+            )
             self.tray_icon = pystray.Icon('Proxynas', image, APP_NAME, menu)
             self.tray_icon.run_detached()
             self.root.withdraw()
         except Exception:
             self._log('Bandeja del sistema no disponible en este entorno; minimizando a la barra de tareas.')
             self.root.iconify()
+
+    def _show_window_from_tray(self):
+        """Al volver de la bandeja, Windows pinta el área de cliente en blanco
+        antes de que Tk redibuje, y ese blanco se ve un cuarto de segundo. La
+        ventana se recupera invisible y se destapa ya pintada."""
+        if self.root.state() == 'normal':
+            self.root.lift()
+            return
+        try:
+            self.root.attributes('-alpha', 0.0)
+        except Exception:
+            pass
+        self.root.deiconify()
+        self.root.lift()
+
+        def reveal():
+            try:
+                self.root.attributes('-alpha', 1.0)
+            except Exception:
+                pass
+
+        # El blanco dura hasta ~250 ms medidos; destapar antes lo deja ver.
+        self.root.after(300, reveal)
+
+    def _stop_tray_icon(self):
+        """Quita el icono de la bandeja; si no se para, sigue ahi tras cerrar."""
+        icon = getattr(self, 'tray_icon', None)
+        if icon is not None:
+            try:
+                icon.stop()
+            except Exception:
+                pass
+            self.tray_icon = None
 
     def _detect_defaults(self):
         """Detecta GPU y Google Drive en segundo plano."""

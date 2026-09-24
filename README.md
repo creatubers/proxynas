@@ -46,16 +46,22 @@ it misses a deeply nested `.braw`, the proxy or transcode run that needs it
 shows the same dialog. Importing copies `BlackmagicRawAPI.dll`,
 `DecoderCUDA.dll`, `DecoderOpenCL.dll` and the `InstructionSetServicesAVX*.dll`
 files into `portable/sdk/`; the **"Importar SDK BRAW (zip)"** button in the
-proxies panel does the same thing by hand. Any recent SDK version works: files
-are matched by name and the x64 ones are preferred.
+proxies panel does the same thing by hand. Files are matched by name and the
+x64 ones are preferred. Import a current SDK: the bundled decoder is compiled
+against the Blackmagic RAW 6.0 interfaces, and an older import stops with a
+clear message instead of decoding.
 
 The Windows download is a zip of `.msi` installers rather than loose DLLs, so
 Proxynas extracts them with `msiexec /a` (nothing is installed) and takes the
 x64 copies, never the ARM64 ones.
 
 `.braw` also needs `braw_decode.exe` in `portable/bin/`. It is **not** part of
-the SDK: it is Proxynas's own decoder (source in `tools/braw_decode/`, built
-against the SDK headers), and the Windows builds already include it.
+the SDK: it is Proxynas's own decoder, and the Windows builds already include
+it. It reaches the SDK through COM interfaces, so it must be compiled against
+the interfaces that SDK declares. After an SDK update, rebuild it with
+`tools/braw_decode/build_braw_decode.bat "<SDK>\Win\Include"` (needs the
+Visual Studio C++ build tools; the script regenerates the interface header from
+the SDK's IDL with MIDL and refreshes `portable/bin/braw_decode.exe`).
 
 Everything else works without it: non-BRAW media is handled by FFmpeg alone.
 `python test_braw_sdk_import.py` checks the zip import, the folder warning and
@@ -78,6 +84,9 @@ is not offered and H.264 runs on `libx264` (CPU); `hevc_nvenc` has no such
 limit.
 `ffmpeg` and `ffprobe` come from `portable/bin/` when present and from `PATH`
 otherwise.
+
+The status box under the codec radios and the activity log are plain text, so
+you can select and copy an error verbatim.
 
 ## Diagnostics
 

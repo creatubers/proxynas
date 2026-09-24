@@ -98,6 +98,8 @@ public:
 		readJob->Release();
 	}
 
+	void ReadAudioComplete(IBlackmagicRawJob*, HRESULT, IBlackmagicRawAudioBuffer*) override {}
+
 	void ProcessComplete(IBlackmagicRawJob* job, HRESULT result, IBlackmagicRawProcessedImage* processedImage) override
 	{
 		FrameResult* frameResult = nullptr;
@@ -160,7 +162,8 @@ static bool DecodeFrame(IBlackmagicRawClip* clip, IBlackmagicRaw* codec, unsigne
 	HRESULT result = clip->CreateJobReadFrame(frameIndex, &readJob);
 	if (FAILED(result))
 	{
-		std::cerr << "Failed to create read job for frame " << frameIndex << std::endl;
+		std::cerr << "Failed to create read job for frame " << frameIndex
+			<< ". The imported Blackmagic RAW SDK is older than this decoder expects." << std::endl;
 		return false;
 	}
 
@@ -311,7 +314,7 @@ int main(int argc, const char* argv[])
 		result = codec->SetCallback(&callback);
 		if (FAILED(result))
 		{
-			std::cerr << "Failed to set decoder callback." << std::endl;
+			std::cerr << "Failed to set decoder callback. A newer Blackmagic RAW SDK is required." << std::endl;
 			break;
 		}
 
