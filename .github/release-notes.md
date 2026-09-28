@@ -8,6 +8,17 @@ needed for `.braw` files. Jump to **Install and troubleshooting** below.
 
 ## Changelog
 
+### v0.1.11
+
+- **Stills are copied instead of converted.** `.tiff`, `.rw2`, `.cr2` and
+  `.arw` now reach the backup byte for byte, with their original extension.
+  They used to be re-encoded to `.png` by ImageMagick, and a machine without
+  ImageMagick either could not start `Todo` / `Audio + imágenes` at all or
+  dropped every still silently, because those extensions are excluded from
+  the plain copy pass.
+- ImageMagick is gone from the app: no dependency, no check, no diagnostics
+  line, nothing to install.
+
 ### v0.1.10
 
 - **The backup buttons no longer vanish on a small window.** `Iniciar backup`,

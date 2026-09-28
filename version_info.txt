@@ -2,8 +2,8 @@
 # Sube filevers/prodvers a la vez que etiquetas una release (vX.Y.Z -> X.Y.Z.0).
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(0, 1, 10, 0),
-    prodvers=(0, 1, 10, 0),
+    filevers=(0, 1, 11, 0),
+    prodvers=(0, 1, 11, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -16,12 +16,12 @@ VSVersionInfo(
       StringTable('040904B0', [
         StringStruct('CompanyName', 'creatubers'),
         StringStruct('FileDescription', 'Proxynas - proxies y backup para material de camara'),
-        StringStruct('FileVersion', '0.1.10.0'),
+        StringStruct('FileVersion', '0.1.11.0'),
         StringStruct('InternalName', 'Proxynas'),
         StringStruct('LegalCopyright', 'MIT License. Not affiliated with Blackmagic Design.'),
         StringStruct('OriginalFilename', 'Proxynas.exe'),
         StringStruct('ProductName', 'Proxynas'),
-        StringStruct('ProductVersion', '0.1.10'),
+        StringStruct('ProductVersion', '0.1.11'),
       ]),
     ]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])]),

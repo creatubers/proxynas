@@ -103,7 +103,7 @@ FFPROBE_BIN = braw_proxy.resolve_tool('ffprobe')
 APP_NAME = 'Proxynas'
 # Fuente unica en Python: version_info.txt solo lo lee PyInstaller al construir
 # el .exe, asi que al subir version hay que tocar los dos sitios.
-APP_VERSION = '0.1.10'
+APP_VERSION = '0.1.11'
 APP_SUBTITLE = 'Proxies Blackmagic RAW y backup AV1 portable'
 ICON_PATH = os.path.join(SCRIPT_DIR, 'proxynas.png')
 CONFIG_PATH = os.path.join(SCRIPT_DIR, 'proxynas_config.json')
@@ -653,11 +653,6 @@ def check_braw_tools():
         return False, str(exc)
 
 
-def check_magick():
-    """Verifica que ImageMagick este disponible."""
-    return shutil.which('magick') is not None
-
-
 def proxy_extension_for(source_path):
     return ".MOV" if os.path.splitext(source_path)[1] == ".MOV" else ".mov"
 
@@ -914,25 +909,16 @@ class BackupProcessor:
             remove_file_quietly(partial_out)
             raise
     def process_images(self, abspath_in, dir_out, prefix, suffix):
-        ext = '.PNG' if prefix.isupper() else '.png'
-        abspath_out = os.path.join(dir_out, prefix + ext)
+        """Copia las imagenes tal cual: no se convierten."""
+        abspath_out = os.path.join(dir_out, prefix + suffix)
 
         if os.path.exists(abspath_out):
             self.stats['skipped'] += 1
             return
 
-        self.log(f"  Imagen: {basename(abspath_in)}")
-        partial_out = temporary_output_path(abspath_out)
-        remove_file_quietly(partial_out)
-        try:
-            subprocess.run([
-                'magick', '-quality', '95', abspath_in, '-auto-orient', partial_out
-            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            promote_partial_output(partial_out, abspath_out)
-            self.stats['images'] += 1
-        except Exception:
-            remove_file_quietly(partial_out)
-            raise
+        self.log(f"  Copiando imagen: {basename(abspath_in)}")
+        atomic_copyfile(abspath_in, abspath_out)
+        self.stats['images'] += 1
     def process_braw(self, abspath_in, dir_out, prefix, suffix, create_proxy=True):
         """Convierte BRAW a MP4 de backup y opcionalmente copia el original."""
         abspath_out = os.path.join(dir_out, prefix + suffix)
@@ -2420,12 +2406,6 @@ class BackupApp:
             else:
                 lines.append("ffmpeg/ffprobe: ✓")
 
-            # magick
-            if check_magick():
-                lines.append("ImageMagick: ✓")
-            else:
-                lines.append("⚠ ImageMagick (magick) no encontrado en PATH")
-
             braw_ok, braw_missing = check_braw_tools()
             if braw_ok:
                 lines.append("Blackmagic RAW SDK portable: OK")
@@ -2626,7 +2606,6 @@ class BackupApp:
         needs_video_ffmpeg = mode in ('todo', 'video') and self.transcode_var.get()
         needs_audio_ffmpeg = mode in ('todo', 'audio_img') and self.audio_preset_var.get() != AUDIO_NO_TRANSCODE
         needs_ffmpeg = needs_video_ffmpeg or needs_audio_ffmpeg
-        needs_magick = mode in ('todo', 'audio_img')
 
         if needs_ffmpeg:
             ff_ok, ff_missing = check_ffmpeg()
@@ -2644,10 +2623,6 @@ class BackupApp:
                 messagebox.showerror("Error", f"{CODEC_PRESET_LABELS.get(preset, preset)} no disponible: {reason}")
                 self._apply_encoder_capabilities(caps)
                 return
-
-        if needs_magick and not check_magick():
-            messagebox.showerror("Error", "No se encuentra ImageMagick (magick). Instálalo y añádelo al PATH.")
-            return
 
         if self.transcode_var.get() and mode in ('todo', 'video') and contains_files(src, BRAW_EXTENSIONS):
             braw_ok, braw_missing = check_braw_tools()
