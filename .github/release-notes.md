@@ -8,6 +8,18 @@ needed for `.braw` files. Jump to **Install and troubleshooting** below.
 
 ## Changelog
 
+### v0.1.10
+
+- **The backup buttons no longer vanish on a small window.** `Iniciar backup`,
+  `Cancelar` and `Salir` sat inside the Backup card, so a window shorter than
+  the card pushed them out of view and you had to maximize to start a backup.
+  They now live in their own bar under that card and stay put; the card
+  content is what gives up the space.
+- The version is shown next to the app name, in the header and in the window
+  title bar.
+- Footer credit: `Hecho con ♥ por Creatubers`, with links to Creatubers and to
+  the project's donation page.
+
 ### v0.1.9
 
 - **FFmpeg is now really downloaded on first launch.** The download was only

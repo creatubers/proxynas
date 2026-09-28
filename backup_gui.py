@@ -74,6 +74,8 @@ FFMPEG_DOWNLOAD_URL = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/l
 FFMPEG_MIN_BUILD_DATE = '20260819'
 # braw_decode.exe es un binario de Windows, así que el SDK útil es el de Windows.
 BRAW_SDK_URL = 'https://www.blackmagicdesign.com/support/latest-download/braw-sdk/windows'
+CREATUBERS_URL = 'https://www.creatubers.com'
+APOYO_URL = 'https://buy.stripe.com/dRm3cweXjfLx8rk2em4ZG01'
 BRAW_SDK_HELP = (
     'El SDK de Blackmagic RAW no se puede distribuir con Proxynas, así que hay que\n'
     'descargarlo una vez desde la web oficial de Blackmagic:\n\n'
@@ -99,6 +101,9 @@ FFMPEG_HELP = (
 FFMPEG_BIN = braw_proxy.resolve_tool('ffmpeg')
 FFPROBE_BIN = braw_proxy.resolve_tool('ffprobe')
 APP_NAME = 'Proxynas'
+# Fuente unica en Python: version_info.txt solo lo lee PyInstaller al construir
+# el .exe, asi que al subir version hay que tocar los dos sitios.
+APP_VERSION = '0.1.10'
 APP_SUBTITLE = 'Proxies Blackmagic RAW y backup AV1 portable'
 ICON_PATH = os.path.join(SCRIPT_DIR, 'proxynas.png')
 CONFIG_PATH = os.path.join(SCRIPT_DIR, 'proxynas_config.json')
@@ -1269,7 +1274,7 @@ class BackupApp:
 
     def __init__(self, root):
         self.root = root
-        self.root.title(APP_NAME)
+        self.root.title(f'{APP_NAME} {APP_VERSION}')
         self.root.minsize(1180, 760)
         self.running = False
         self.proxy_running = False
@@ -1554,10 +1559,15 @@ class BackupApp:
         self.style.configure('Header.TLabel', background=c['bg'], foreground=c['text'], font=('Segoe UI Semibold', 18))
         self.style.configure('HeaderMuted.TLabel', background=c['bg'], foreground=c['muted'], font=('Segoe UI', 10))
         self.style.configure('Header.TCheckbutton', background=c['bg'], foreground=c['text'], font=base_font)
+        self.style.configure('HeaderVersion.TLabel', background=c['bg'], foreground=c['muted'], font=('Segoe UI Semibold', 10))
         self.style.map('Header.TCheckbutton', background=[('active', c['bg'])], foreground=[('active', c['text']), ('disabled', c['muted'])])
         self.style.configure('Title.TLabel', background=c['surface'], foreground=c['text'], font=('Segoe UI Semibold', 14))
         self.style.configure('Body.TLabel', background=c['surface'], foreground=c['text'], font=base_font)
         self.style.configure('Muted.TLabel', background=c['surface'], foreground=c['muted'], font=('Segoe UI', 9))
+        self.style.configure('Footer.TLabel', background=c['bg'], foreground=c['muted'], font=base_font)
+        # En claro el accent es demasiado pastel para un enlace: se oscurece.
+        link_fg = c['accent'] if self.dark_mode_var.get() else '#356e93'
+        self.style.configure('FooterLink.TLabel', background=c['bg'], foreground=link_fg, font=('Segoe UI', 10, 'underline'))
         self.style.configure('Status.TLabel', background=c['surface_2'], foreground=c['text'], font=('Segoe UI', 9))
         self.style.configure('TCheckbutton', background=c['surface'], foreground=c['text'], font=base_font)
         self.style.map('TCheckbutton', background=[('active', c['surface'])], foreground=[('active', c['text'])])
@@ -1675,7 +1685,10 @@ class BackupApp:
         header = ttk.Frame(root_frame, style='App.TFrame')
         header.grid(row=0, column=0, sticky='ew', pady=(0, 10))
         header.columnconfigure(0, weight=1)
-        ttk.Label(header, text=APP_NAME, style='Header.TLabel').grid(row=0, column=0, sticky='w')
+        title_row = ttk.Frame(header, style='App.TFrame')
+        title_row.grid(row=0, column=0, sticky='w')
+        ttk.Label(title_row, text=APP_NAME, style='Header.TLabel').pack(side='left')
+        ttk.Label(title_row, text=APP_VERSION, style='HeaderVersion.TLabel').pack(side='left', padx=(8, 0), pady=(6, 0))
         ttk.Label(header, text=APP_SUBTITLE, style='HeaderMuted.TLabel').grid(row=1, column=0, sticky='w', pady=(3, 0))
         header_actions = ttk.Frame(header, style='App.TFrame')
         header_actions.grid(row=0, column=1, rowspan=2, sticky='e')
@@ -1701,6 +1714,34 @@ class BackupApp:
 
         self._build_proxy_panel(proxy_card.body)
         self._build_backup_panel(backup_card.body)
+
+        # La barra de acciones va fuera de la tarjeta, en la misma columna: si la
+        # ventana es baja, el contenido de la tarjeta se recorta pero los botones
+        # de backup siguen visibles.
+        buttons = ttk.Frame(main, style='App.TFrame')
+        buttons.grid(row=2, column=1, sticky='ew', padx=(8, 0), pady=(10, 0))
+        buttons.columnconfigure(2, weight=1)
+        self.btn_start = self._make_button(buttons, 'Iniciar backup', self._start, kind='primary')
+        self.btn_start.grid(row=0, column=0, sticky='w')
+        self.btn_cancel = self._make_button(buttons, 'Cancelar', self._cancel, kind='danger')
+        self.btn_cancel.config(state='disabled')
+        self.btn_cancel.grid(row=0, column=1, sticky='w', padx=(8, 0))
+        self._make_button(buttons, 'Salir', self.root.quit).grid(row=0, column=3, sticky='e')
+
+        footer = ttk.Frame(root_frame, style='App.TFrame')
+        footer.grid(row=2, column=0, sticky='w', pady=(10, 0))
+        # Corazon de texto (U+2665, sin VS16): el emoji a color se separaba del
+        # resto del texto y desentonaba con la tipografia de la interfaz.
+        ttk.Label(footer, text='Hecho con \u2665 por ', style='Footer.TLabel').pack(side='left')
+
+        def add_footer_link(text, url):
+            label = ttk.Label(footer, text=text, style='FooterLink.TLabel', cursor='hand2')
+            label.pack(side='left')
+            label.bind('<Button-1>', lambda _event: webbrowser.open(url))
+
+        add_footer_link('Creatubers', CREATUBERS_URL)
+        ttk.Label(footer, text='  \u00b7  ', style='Footer.TLabel').pack(side='left')
+        add_footer_link('Apoya el desarrollo', APOYO_URL)
 
     def _build_watch_folder_panel(self, parent):
         parent.columnconfigure(0, weight=1)
@@ -2027,16 +2068,6 @@ class BackupApp:
         self.progress_bar.grid(row=1, column=0, sticky='ew', pady=(0, 8))
         self.log_text = scrolledtext.ScrolledText(log_frame, height=6, state='disabled')
         self.log_text.grid(row=2, column=0, sticky='nsew')
-
-        buttons = ttk.Frame(parent, style='Card.TFrame')
-        buttons.grid(row=5, column=0, sticky='ew', pady=(10, 0))
-        buttons.columnconfigure(2, weight=1)
-        self.btn_start = self._make_button(buttons, 'Iniciar backup', self._start, kind='primary')
-        self.btn_start.grid(row=0, column=0, sticky='w')
-        self.btn_cancel = self._make_button(buttons, 'Cancelar', self._cancel, kind='danger')
-        self.btn_cancel.config(state='disabled')
-        self.btn_cancel.grid(row=0, column=1, sticky='w', padx=(8, 0))
-        self._make_button(buttons, 'Salir', self.root.quit).grid(row=0, column=3, sticky='e')
 
     def _iter_proxy_candidates(self):
         root_dir = self.watch_folder_var.get().strip() or SCRIPT_DIR
