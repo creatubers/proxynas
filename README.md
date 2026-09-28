@@ -4,6 +4,13 @@ Desktop tool for camera media workflows: generates lightweight proxies from
 Blackmagic RAW, video, RAW stills and audio, and can transcode a folder into a
 portable AV1 backup. Windows and Linux (the UI is in Spanish).
 
+The window shows one shared drop zone (“Carpeta vigilada”) feeding two panels:
+proxies on the left, backup on the right. The action buttons sit under the
+panels instead of inside the backup card, so `Iniciar backup`, `Cancelar` and
+`Salir` stay visible when the window is small. The version is shown in the
+title bar and next to the app name, the header has a button to minimize to the
+notification area, and the footer links to the authors and to a donation page.
+
 Hardware encoders used when available: `av1_nvenc`, `av1_qsv`, `av1_amf`,
 `hevc_nvenc`, `hevc_qsv`, `hevc_amf`, falling back to `libx265` / software AV1.
 
@@ -21,8 +28,13 @@ pip install -r requirements.txt
 
 ```
 python Proxynas.py                                              # GUI
-python Proxynas.py --cli <source_dir> <dest_dir> [--no-transcode]
+python Proxynas.py --cli <source_dir> <dest_dir> [--no-transcode] [--include-braw-originals]
 ```
+
+The CLI always runs with the defaults (AV1 video, audio copied as-is); the
+codec, audio and mode choices are GUI-only. `--no-transcode` copies video
+instead of converting it, and `--include-braw-originals` also copies the raw
+`.braw` sources.
 
 ## FFmpeg
 
@@ -87,8 +99,32 @@ limit.
 `ffmpeg` and `ffprobe` come from `portable/bin/` when present and from `PATH`
 otherwise.
 
+Proxies land in a `Proxy/` subfolder next to each source file, and `.MOV`
+sources keep the uppercase extension. A registry (`proxynas_registry.json`)
+reconciles them run to run: moved files are re-linked, deleted ones are
+reported, and entries that collide land in `Proxy/_orphan/`. `Modo live`
+re-checks the folder every 15 seconds while it is on.
+
 The status box under the codec radios and the activity log are plain text, so
 you can select and copy an error verbatim.
+
+## Backup
+
+The backup panel copies or transcodes a folder into a destination tree. The
+mode radios choose what to process: `Todo`, `Solo vídeo`, `Audio + imágenes`
+or `Otros`. Audio is either copied (`No transcodificar`) or converted to
+`WAV PCM` (24-bit), `AAC M4A` (192 kbit/s) or `Opus MP4`, written in the
+destination as `<name>.<AUDIO|audio>.<ext>`. Stills (`.tiff .rw2 .cr2 .arw`)
+are copied byte for byte, never converted. `Convertir vídeo` offers `AV1
+hardware`, `H.265 hardware` and `H.265 software`; a source already in the
+target family is copied instead of re-encoded, and if the chosen encoder is
+unavailable the original is copied and counted as an error. Everything else
+is copied as-is (`Thumbs.db` is skipped).
+
+`Incluir originales BRAW en el backup (muy pesado)` also writes the raw `.braw`
+clips, scaled down to at most 1920 px wide. `Modo live` re-runs the backup
+every 30 seconds while it is on, and `Apagar al terminar` shuts the machine
+down when the run finishes.
 
 ## Diagnostics
 
