@@ -1,43 +1,45 @@
 # Proxynas
 
-Proxynas crea proxies de vídeo y hace copias de seguridad de carpetas con material audiovisual. La versión distribuida para Windows es portable: se descomprime y se ejecuta, sin instalador.
+**EN** | [ES](README.es.md)
 
-## Descargar y usar
+Proxynas creates video proxies and backs up folders of audiovisual media. The Windows release is portable: extract it and run it, with no installer.
 
-1. Descarga el ZIP de la [última versión](https://github.com/creatubers/proxynas/releases/latest), donde también está el historial de cambios.
-2. Extrae la carpeta completa y abre `Proxynas.exe`.
-3. Selecciona la carpeta de origen. Para el backup, elige también una carpeta de destino fuera del origen.
+## Download and use
 
-La interfaz está en español e inglés. Si no has elegido idioma o modo claro/oscuro en la aplicación, utiliza los ajustes del sistema al arrancar.
+1. Download the ZIP from the [latest release](https://github.com/creatubers/proxynas/releases/latest), which also includes the changelog.
+2. Extract the entire folder and open `Proxynas.exe`.
+3. Select a source folder. For backups, also choose a destination outside the source folder.
 
-## Qué hace
+The interface is available in English and Spanish. Until you choose a language or light/dark mode in the app, it follows your system settings at startup.
 
-- **Proxies:** crea archivos H.264 o H.265 en una carpeta `Proxy` junto a los vídeos originales. El códec y el uso de CPU o GPU se eligen en la aplicación.
-- **Backup:** procesa la carpeta de origen en el destino elegido. Puedes elegir `Todo`, `Solo vídeo`, `Audio + imágenes` u `Otros`, y decidir si el vídeo y el audio se copian o se transcodifican.
+## What it does
 
-## Dependencias
+- **Proxies:** creates H.264 or H.265 files in a `Proxy` folder next to the original videos. You can choose the codec and CPU or GPU encoding in the app.
+- **Backup:** processes the source folder into the chosen destination. You can select all files, video only, audio and images, or other files, and choose whether to copy or transcode video and audio.
 
-Proxynas necesita `ffmpeg` y `ffprobe`. En Windows intenta descargarlos al arrancar si no están disponibles. También puedes instalarlos en `PATH` o colocarlos en `portable/bin/` junto a la aplicación.
+## Dependencies
 
-Para procesar archivos `.braw` necesitas descargar el [SDK de Blackmagic RAW](https://www.blackmagicdesign.com/support/latest-download/braw-sdk/windows) e importarlo desde Proxynas. El SDK no se incluye en la descarga de la aplicación.
+Proxynas needs `ffmpeg` and `ffprobe`. On Windows, it tries to download them at startup if they are unavailable. You can also install them on `PATH` or place them in `portable/bin/` next to the app.
 
-## Ejecutar desde el código fuente
+To process `.braw` files, download the [Blackmagic RAW SDK](https://www.blackmagicdesign.com/support/latest-download/braw-sdk/windows) and import it in Proxynas. The SDK is not included with the app.
 
-Con Python y las dependencias de `requirements.txt`:
+## Run from source
+
+With Python and the dependencies in `requirements.txt`:
 
 ```powershell
 python -m pip install -r requirements.txt
 python Proxynas.py
 ```
 
-El modo de línea de comandos permite ejecutar un backup:
+The command-line mode can run a backup:
 
 ```powershell
-python Proxynas.py --cli <origen> <destino> [--no-transcode] [--include-braw-originals] [--lang es|en]
+python Proxynas.py --cli <source> <destination> [--no-transcode] [--include-braw-originals] [--lang es|en]
 ```
 
-## Contribuir
+## Contributing
 
-Se aceptan contribuciones mediante issues y pull requests. Consulta [CONTRIBUTING.md](CONTRIBUTING.md) para preparar el entorno, ejecutar las comprobaciones y enviar cambios.
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) (in Spanish) to set up the project, run checks, and submit changes.
 
-El código de Proxynas se distribuye bajo la licencia [MIT](LICENSE). FFmpeg y el SDK de Blackmagic RAW son productos separados con sus propias licencias.
+Proxynas source code is released under the [MIT license](LICENSE). FFmpeg and the Blackmagic RAW SDK are separate products with their own licenses.
