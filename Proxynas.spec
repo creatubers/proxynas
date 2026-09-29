@@ -5,8 +5,8 @@ from pathlib import Path
 block_cipher = None
 root = Path.cwd()
 
-# 'portable' and 'vendor' are local-only (see .gitignore); bundle them if present.
-bundled = [name for name in ('portable', 'vendor') if (root / name).is_dir()]
+# Only bundled Python dependencies; portable/ may contain user-imported SDK files.
+bundled = [name for name in ('vendor',) if (root / name).is_dir()]
 
 a = Analysis(
     ['Proxynas.py'],
@@ -66,4 +66,3 @@ coll = COLLECT(
     upx_exclude=[],
     name='Proxynas',
 )
-

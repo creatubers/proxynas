@@ -2,7 +2,7 @@
 """
 Proxynas - Proxies Blackmagic RAW y backup AV1 portable
 Compatible con Windows y Linux.
-Transcodifica vídeo a AV1 (hardware), audio a Opus, imágenes RAW a PNG.
+Transcodifica vídeo a AV1 (hardware) y audio a Opus; copia imágenes RAW sin modificar.
 """
 
 import os
@@ -11,6 +11,7 @@ import platform
 import subprocess
 import shutil
 import json
+import configparser
 import re
 import tempfile
 import filecmp
@@ -28,6 +29,30 @@ from os.path import basename
 
 import proxygenerator as braw_proxy
 from proxyregistry import ProxyRegistry
+from localization import system_language, translate
+
+
+LANGUAGE = 'es'
+
+
+def _(text):
+    return translate(text, LANGUAGE)
+
+
+def showerror(title, message):
+    return messagebox.showerror(_(title), _(message))
+
+
+def showwarning(title, message):
+    return messagebox.showwarning(_(title), _(message))
+
+
+def showinfo(title, message):
+    return messagebox.showinfo(_(title), _(message))
+
+
+def askyesno(title, message):
+    return messagebox.askyesno(_(title), _(message))
 
 # ─────────────────────────────────────────────
 # Constantes y extensiones
@@ -103,7 +128,7 @@ FFPROBE_BIN = braw_proxy.resolve_tool('ffprobe')
 APP_NAME = 'Proxynas'
 # Fuente unica en Python: version_info.txt solo lo lee PyInstaller al construir
 # el .exe, asi que al subir version hay que tocar los dos sitios.
-APP_VERSION = '0.1.11'
+APP_VERSION = '0.1.12'
 APP_SUBTITLE = 'Proxies Blackmagic RAW y backup AV1 portable'
 ICON_PATH = os.path.join(SCRIPT_DIR, 'proxynas.png')
 CONFIG_PATH = os.path.join(SCRIPT_DIR, 'proxynas_config.json')
@@ -322,6 +347,41 @@ def load_config():
         except (OSError, json.JSONDecodeError):
             continue
     return {}
+
+
+def system_dark_mode():
+    if IS_WINDOWS:
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize') as key:
+                return winreg.QueryValueEx(key, 'AppsUseLightTheme')[0] == 0
+        except OSError:
+            return False
+    if IS_LINUX:
+        if 'kde' in os.environ.get('XDG_CURRENT_DESKTOP', '').lower():
+            try:
+                kde = configparser.ConfigParser(interpolation=None)
+                kde.read(os.path.expanduser('~/.config/kdeglobals'))
+                scheme = kde.get('General', 'ColorScheme', fallback='').lower()
+                if 'dark' in scheme or 'light' in scheme:
+                    return 'dark' in scheme
+                background = kde.get('Colors:Window', 'BackgroundNormal', fallback='')
+                if background:
+                    return sum(int(channel) for channel in background.split(',')) / 3 < 128
+            except (configparser.Error, ValueError):
+                pass
+        theme = os.environ.get('GTK_THEME', '')
+        if theme:
+            return 'dark' in theme.lower()
+        try:
+            result = subprocess.run(['gsettings', 'get', 'org.gnome.desktop.interface', 'color-scheme'], capture_output=True, text=True, timeout=2)
+            if 'prefer-dark' in result.stdout:
+                return True
+            result = subprocess.run(['gsettings', 'get', 'org.gnome.desktop.interface', 'gtk-theme'], capture_output=True, text=True, timeout=2)
+            return 'dark' in result.stdout.lower()
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    return False
 
 
 def save_config(config):
@@ -732,10 +792,16 @@ def contains_files(root_dir, extensions, max_depth=None):
 # Lógica de procesamiento
 # ─────────────────────────────────────────────
 
+def validate_backup_destination(src_dir, dst_dir):
+    if Path(dst_dir).resolve().is_relative_to(Path(src_dir).resolve()):
+        raise ValueError('El destino del backup no puede estar dentro del origen.')
+
+
 class BackupProcessor:
     """Motor de backup con callbacks para la GUI."""
 
     def __init__(self, src_dir, dst_dir, log_callback=None, progress_callback=None, detail_callback=None, backup_braw_originals=False, codec_preset=DEFAULT_CODEC_PRESET, encoder_capabilities=None, audio_preset=DEFAULT_AUDIO_PRESET):
+        validate_backup_destination(src_dir, dst_dir)
         self.src_dir = src_dir
         self.dst_dir = dst_dir
         self.log = log_callback or print
@@ -1268,6 +1334,10 @@ class BackupApp:
         self.total_files = 0
         self.processed_files = 0
         self.config = load_config()
+        global LANGUAGE
+        LANGUAGE = self.config.get('language') if self.config.get('language') in ('es', 'en') else system_language()
+        braw_proxy.LANGUAGE = LANGUAGE
+        self.language_var = tk.StringVar(value=LANGUAGE)
         self._native_drop_callback = None
         self._native_drop_old_procs = {}
         self._toggle_widgets = []
@@ -1288,7 +1358,7 @@ class BackupApp:
         self.backup_live_var = tk.BooleanVar(value=False)
         self.proxy_live_thread = None
         self.backup_live_thread = None
-        self.dark_mode_var = tk.BooleanVar(value=self.config.get('dark_mode', False))
+        self.dark_mode_var = tk.BooleanVar(value=self.config['dark_mode'] if 'dark_mode' in self.config else system_dark_mode())
         self.shutdown_var = tk.BooleanVar(value=False)
         self.shutdown_min_var = tk.StringVar(value='5')
         self.encoder_capabilities = None
@@ -1304,6 +1374,7 @@ class BackupApp:
             pass
         self._set_window_icon()
         self._build_ui()
+        self._translate_widgets(self.root)
         self._apply_theme()
         self._set_initial_geometry()
         self._detect_defaults()
@@ -1347,7 +1418,6 @@ class BackupApp:
 
     def _persist_config(self):
         self.config.update({
-            'dark_mode': self.dark_mode_var.get(),
             'watch_folder': self.watch_folder_var.get(),
             'dst_dir': self.dst_var.get(),
             'mode': self.mode_var.get(),
@@ -1370,8 +1440,46 @@ class BackupApp:
         self.root.destroy()
 
     def _toggle_dark_mode(self):
+        self.config['dark_mode'] = self.dark_mode_var.get()
         self._persist_config()
         self._apply_theme()
+
+    def _change_language(self):
+        global LANGUAGE
+        LANGUAGE = self.language_var.get()
+        braw_proxy.LANGUAGE = LANGUAGE
+        self.config['language'] = LANGUAGE
+        self._persist_config()
+        self._translate_widgets(self.root)
+        self._draw_drop_zone()
+        self._refresh_toggle_widgets()
+        self._sync_proxy_status_text()
+        if self.encoder_capabilities:
+            self._apply_encoder_capabilities(self.encoder_capabilities)
+
+    def _translate_widgets(self, parent):
+        for widget in parent.winfo_children():
+            if isinstance(widget, RoundedButton):
+                widget.configure(text=_(widget._spanish_text), width=max(widget._font.measure(_(widget._spanish_text)) + 46, 80))
+            else:
+                try:
+                    if widget.cget('textvariable'):
+                        self._translate_widgets(widget)
+                        continue
+                except tk.TclError:
+                    pass
+                try:
+                    source = getattr(widget, '_spanish_text', widget.cget('text'))
+                    if source:
+                        widget._spanish_text = source
+                        widget.configure(text=_(source))
+                except (tk.TclError, KeyError):
+                    pass
+            self._translate_widgets(widget)
+
+    def _set_text(self, widget, source):
+        widget._spanish_text = source
+        widget.config(text=_(source))
 
     def _palette(self):
         if self.dark_mode_var.get():
@@ -1608,7 +1716,7 @@ class BackupApp:
         for widget, variable, label in getattr(self, '_toggle_widgets', []):
             active = variable.get()
             widget.configure(
-                text=f"{label}: {'activo' if active else 'inactivo'}",
+                text=_(f"{label}: {'activo' if active else 'inactivo'}"),
                 bg=c['accent'] if active else c['surface_2'],
                 fg='#111111' if active else c['text'],
                 activebackground=c['accent_2'] if active else c['border'],
@@ -1641,6 +1749,7 @@ class BackupApp:
 
     def _make_button(self, parent, text, command, kind='secondary', bg_key='surface', min_width=None):
         button = RoundedButton(parent, self, text=text, command=command, kind=kind, bg_key=bg_key, min_width=min_width)
+        button._spanish_text = text
         self._rounded_buttons.append(button)
         return button
 
@@ -1680,6 +1789,9 @@ class BackupApp:
         header_actions.grid(row=0, column=1, rowspan=2, sticky='e')
         self._make_button(header_actions, 'Minimizar al área de notificaciones', self._minimize_to_tray, bg_key='bg').pack(side='left', padx=(0, 10))
         ttk.Checkbutton(header_actions, text='Modo oscuro', variable=self.dark_mode_var, command=self._toggle_dark_mode, style='Header.TCheckbutton').pack(side='left')
+        ttk.Label(header_actions, text='Idioma', style='HeaderMuted.TLabel').pack(side='left', padx=(12, 4))
+        for language, label in (('es', 'ES'), ('en', 'EN')):
+            ttk.Radiobutton(header_actions, text=label, variable=self.language_var, value=language, command=self._change_language).pack(side='left', padx=(0, 4))
 
         main = ttk.Frame(root_frame, style='App.TFrame')
         main.grid(row=1, column=0, sticky='nsew')
@@ -1755,8 +1867,8 @@ class BackupApp:
         w = max(canvas.winfo_width(), 300)
         h = max(canvas.winfo_height(), 130)
         canvas.create_rectangle(12, 12, w - 12, h - 12, outline=c['border'], width=2, dash=(8, 6))
-        canvas.create_text(w / 2, h / 2 - 14, text='Arrastra la carpeta aquí', fill=c['text'], font=('Segoe UI Semibold', 18))
-        canvas.create_text(w / 2, h / 2 + 26, text='o haz clic para abrirla', fill=c['muted'], font=('Segoe UI', 10))
+        canvas.create_text(w / 2, h / 2 - 14, text=_('Arrastra la carpeta aquí'), fill=c['text'], font=('Segoe UI Semibold', 18))
+        canvas.create_text(w / 2, h / 2 + 26, text=_('o haz clic para abrirla'), fill=c['muted'], font=('Segoe UI', 10))
 
     def _enable_drag_and_drop(self):
         enabled = False
@@ -1862,7 +1974,7 @@ class BackupApp:
         self.proxy_status_var.set('Lo que has soltado no parece una carpeta válida.')
 
     def _browse_watch_folder(self):
-        folder = filedialog.askdirectory(title='Seleccionar carpeta vigilada')
+        folder = filedialog.askdirectory(title=_('Seleccionar carpeta vigilada'))
         if folder:
             self._set_watch_folder(folder)
 
@@ -1946,7 +2058,7 @@ class BackupApp:
         """El estado va en un Text de solo lectura: asi se puede seleccionar y copiar."""
         self.proxy_status_text.configure(state='normal')
         self.proxy_status_text.delete('1.0', 'end')
-        self.proxy_status_text.insert('1.0', self.proxy_status_var.get())
+        self.proxy_status_text.insert('1.0', _(self.proxy_status_var.get()))
         self.proxy_status_text.configure(state='disabled')
 
     def _build_backup_panel(self, parent):
@@ -2105,8 +2217,8 @@ class BackupApp:
 
     def _import_braw_sdk(self):
         zip_path = filedialog.askopenfilename(
-            title='Selecciona el zip del Blackmagic RAW SDK',
-            filetypes=[('Zip', '*.zip'), ('Todos los ficheros', '*.*')],
+            title=_('Selecciona el zip del Blackmagic RAW SDK'),
+            filetypes=[('Zip', '*.zip'), (_('Todos los ficheros'), '*.*')],
         )
         if not zip_path:
             return
@@ -2116,7 +2228,7 @@ class BackupApp:
             result = braw_proxy.import_braw_sdk(zip_path)
         except Exception as exc:
             self.proxy_status_var.set('No se pudo importar el SDK BRAW.')
-            messagebox.showerror(APP_NAME, f'No se pudo importar el SDK BRAW:\n{exc}')
+            showerror(APP_NAME, f'No se pudo importar el SDK BRAW:\n{exc}')
             return
 
         lines = [f'Copiado: {os.path.basename(path)}' for path in result['copied']]
@@ -2129,14 +2241,14 @@ class BackupApp:
         self._log(message)
         if result['missing'] or not result['decoder']:
             self.proxy_status_var.set('El SDK BRAW quedó incompleto. Revisa el aviso.')
-            messagebox.showwarning(APP_NAME, message)
+            showwarning(APP_NAME, message)
         else:
             self.proxy_status_var.set('SDK BRAW listo. Ya puedes crear proxies de .braw.')
-            messagebox.showinfo(APP_NAME, 'SDK BRAW importado correctamente.')
+            showinfo(APP_NAME, 'SDK BRAW importado correctamente.')
 
     def _offer_ffmpeg(self, missing):
         """La descarga automática no funcionó: guiar a la descarga manual."""
-        if messagebox.askyesno(
+        if askyesno(
             APP_NAME,
             f'No se encuentra {missing}.\n\n{FFMPEG_HELP}'
             '\n\n¿Quieres abrir la página de descarga en el navegador?',
@@ -2146,13 +2258,13 @@ class BackupApp:
     def _offer_braw_sdk(self, missing=None):
         """Guía para instalar el SDK, que no se puede redistribuir con la app."""
         detail = f'Para trabajar con BRAW, falta lo siguiente:\n{missing}\n\n' if missing else ''
-        if messagebox.askyesno(
+        if askyesno(
             APP_NAME,
             detail + BRAW_SDK_HELP
             + '\n\n¿Quieres abrir la página de descarga del SDK en el navegador?',
         ):
             webbrowser.open(BRAW_SDK_URL)
-        if messagebox.askyesno(
+        if askyesno(
             APP_NAME,
             'Si ya tienes el zip del SDK descargado, Proxynas puede copiar por ti los\n'
             'ficheros necesarios.\n\n¿Quieres importarlo ahora?',
@@ -2176,7 +2288,7 @@ class BackupApp:
             return
         root_dir = self.watch_folder_var.get().strip()
         if not root_dir or not os.path.isdir(root_dir):
-            messagebox.showerror('Error', 'Selecciona una carpeta vigilada válida.')
+            showerror('Error', 'Selecciona una carpeta vigilada válida.')
             return
         ff_ok, ff_missing = check_ffmpeg()
         if not ff_ok:
@@ -2195,7 +2307,7 @@ class BackupApp:
         # interfaz, y si aun no hay datos el error lo da el propio trabajo.
         if proxy_caps and not chosen.get('available'):
             label = braw_proxy.PROXY_CODEC_LABELS.get(codec, codec)
-            messagebox.showerror(
+            showerror(
                 APP_NAME,
                 f"No hay ningún encoder {label} en {ACCEL_LABELS.get(accel, accel)} para los proxies.\n\n"
                 f"{chosen.get('reason') or 'Prueba con otro códec o con CPU.'}",
@@ -2439,10 +2551,12 @@ class BackupApp:
             data = caps.get('presets', {}).get(preset, {})
             label = CODEC_PRESET_LABELS[preset]
             if data.get('available'):
-                rb.config(text=f"{label} ({data.get('encoder')})", state='normal')
+                self._set_text(rb, f"{label} ({data.get('encoder')})")
+                rb.config(state='normal')
             else:
                 reason = data.get('reason') or 'no disponible'
-                rb.config(text=f"{label} - no disponible", state='disabled')
+                self._set_text(rb, f"{label} - no disponible")
+                rb.config(state='disabled')
 
         if self.codec_preset_var.get() not in available_presets and available_presets:
             self.codec_preset_var.set(available_presets[0])
@@ -2450,16 +2564,14 @@ class BackupApp:
         selected = self.codec_preset_var.get()
         selected_data = caps.get('presets', {}).get(selected, {})
         if available_presets:
-            self.codec_status_label.config(
-                text=f"Seleccionado: {CODEC_PRESET_LABELS.get(selected, selected)} ({selected_data.get('encoder')})"
-            )
+            self._set_text(self.codec_status_label, f"Seleccionado: {CODEC_PRESET_LABELS.get(selected, selected)} ({selected_data.get('encoder')})")
         else:
-            self.codec_status_label.config(text='No hay códecs de conversión disponibles; se copiará el vídeo original.')
+            self._set_text(self.codec_status_label, 'No hay códecs de conversión disponibles; se copiará el vídeo original.')
 
         self._apply_proxy_capabilities(caps.get('proxy') or {})
 
         if status_text:
-            self.info_label.config(text=status_text)
+            self._set_text(self.info_label, status_text)
         self._on_mode_change()
         self._persist_config()
 
@@ -2488,7 +2600,7 @@ class BackupApp:
         chosen = data.get(self.proxy_accel_var.get()) or {}
         label = braw_proxy.PROXY_CODEC_LABELS.get(codec, codec)
         if chosen.get('available'):
-            self.proxy_codec_status_label.config(text=f"Seleccionado: {label} ({chosen.get('encoder')})")
+            self._set_text(self.proxy_codec_status_label, f"Seleccionado: {label} ({chosen.get('encoder')})")
         else:
             # Sin ffmpeg, el motivo real es una ruta con un WinError detrás que
             # ocupa media caja y no ayuda; lo útil es decir que falta FFmpeg.
@@ -2496,7 +2608,7 @@ class BackupApp:
                 reason = 'falta FFmpeg'
             else:
                 reason = chosen.get('reason') or 'sin encoder compatible en este ffmpeg'
-            self.proxy_codec_status_label.config(text=f"{label}: no disponible ({reason})")
+            self._set_text(self.proxy_codec_status_label, f"{label}: no disponible ({reason})")
 
     def _on_proxy_codec_change(self):
         self._persist_config()
@@ -2524,15 +2636,15 @@ class BackupApp:
                 rb.config(state='normal' if data.get('available') else 'disabled')
         if hasattr(self, 'codec_status_label'):
             if codec_state == 'disabled':
-                self.codec_status_label.config(text='Conversión de vídeo desactivada para este modo.')
+                self._set_text(self.codec_status_label, 'Conversión de vídeo desactivada para este modo.')
             elif self.encoder_capabilities:
                 selected = self.codec_preset_var.get()
                 data = self.encoder_capabilities.get('presets', {}).get(selected, {})
                 if data.get('available'):
-                    self.codec_status_label.config(text=f"Seleccionado: {CODEC_PRESET_LABELS.get(selected, selected)} ({data.get('encoder')})")
+                    self._set_text(self.codec_status_label, f"Seleccionado: {CODEC_PRESET_LABELS.get(selected, selected)} ({data.get('encoder')})")
 
     def _browse_src(self):
-        d = filedialog.askdirectory(title="Seleccionar directorio de origen")
+        d = filedialog.askdirectory(title=_("Seleccionar directorio de origen"))
         if d:
             self.src_var.set(d)
             # Auto-rellenar destino si vacío
@@ -2553,7 +2665,7 @@ class BackupApp:
                 self._persist_config()
 
     def _browse_dst(self):
-        d = filedialog.askdirectory(title="Seleccionar directorio de destino")
+        d = filedialog.askdirectory(title=_("Seleccionar directorio de destino"))
         if d:
             self.dst_var.set(d)
 
@@ -2561,7 +2673,7 @@ class BackupApp:
         """Escribe en el log de forma thread-safe."""
         def _write():
             self.log_text.config(state='normal')
-            self.log_text.insert('end', msg + '\n')
+            self.log_text.insert('end', _(msg) + '\n')
             self.log_text.see('end')
             self.log_text.config(state='disabled')
         self.root.after(0, _write)
@@ -2574,9 +2686,7 @@ class BackupApp:
             if self.total_files > 0:
                 pct = (self.processed_files / self.total_files) * 100
                 self.progress_bar['value'] = pct
-                self.progress_label.config(
-                    text=f"{self.processed_files}/{self.total_files} archivos ({pct:.0f}%)"
-                )
+                self._set_text(self.progress_label, f"{self.processed_files}/{self.total_files} archivos ({pct:.0f}%)")
         self.root.after(0, _update)
 
     def _update_file_progress(self, filename, percent, speed):
@@ -2584,9 +2694,7 @@ class BackupApp:
             speed_text = f' · {speed}' if speed and speed != 'N/A' else ''
             if self.total_files:
                 self.progress_bar['value'] = ((self.processed_files + percent / 100) / self.total_files) * 100
-            self.progress_label.config(
-                text=f"{self.processed_files}/{self.total_files} archivos · {filename}: {percent:.0f}%{speed_text}"
-            )
+            self._set_text(self.progress_label, f"{self.processed_files}/{self.total_files} archivos · {filename}: {percent:.0f}%{speed_text}")
         self.root.after(0, _update)
 
     def _start(self):
@@ -2595,10 +2703,19 @@ class BackupApp:
         dst = self.dst_var.get().strip()
 
         if not src or not os.path.isdir(src):
-            messagebox.showerror("Error", "El directorio de origen no existe.")
+            showerror("Error", "El directorio de origen no existe.")
             return
         if not dst:
-            messagebox.showerror("Error", "Selecciona un directorio de destino.")
+            showerror("Error", "Selecciona un directorio de destino.")
+            return
+
+        src_basename = os.path.basename(src.rstrip(os.sep))
+        dst_last = os.path.basename(dst.rstrip(os.sep))
+        effective_dst = os.path.join(dst, src_basename) if src_basename and dst_last.lower() != src_basename.lower() else dst
+        try:
+            validate_backup_destination(src, effective_dst)
+        except ValueError as exc:
+            showerror("Error", str(exc))
             return
 
         # Verificar herramientas necesarias
@@ -2620,7 +2737,7 @@ class BackupApp:
             if not select_encoder_for_preset(preset, caps):
                 data = caps.get('presets', {}).get(preset, {})
                 reason = data.get('reason') or 'no disponible'
-                messagebox.showerror("Error", f"{CODEC_PRESET_LABELS.get(preset, preset)} no disponible: {reason}")
+                showerror("Error", f"{CODEC_PRESET_LABELS.get(preset, preset)} no disponible: {reason}")
                 self._apply_encoder_capabilities(caps)
                 return
 
@@ -2641,18 +2758,11 @@ class BackupApp:
         self.log_text.delete('1.0', 'end')
         self.log_text.config(state='disabled')
 
-        threading.Thread(target=self._run_backup, args=(src, dst), daemon=True).start()
+        threading.Thread(target=self._run_backup, args=(src, effective_dst), daemon=True).start()
 
-    def _run_backup(self, src, dst):
+    def _run_backup(self, src, effective_dst):
         mode = self.mode_var.get()
         transcode = self.transcode_var.get()
-
-        src_basename = os.path.basename(src.rstrip(os.sep))
-        dst_last = os.path.basename(dst.rstrip(os.sep))
-        if src_basename and dst_last.lower() != src_basename.lower():
-            effective_dst = os.path.join(dst, src_basename)
-        else:
-            effective_dst = dst
 
         self.processor = BackupProcessor(
             src, effective_dst,
@@ -2766,13 +2876,27 @@ class BackupApp:
 
 def run_cli():
     """Modo CLI compatible con el script original."""
+    global LANGUAGE
+    LANGUAGE = load_config().get('language') or system_language()
+    if '--lang' in sys.argv:
+        try:
+            LANGUAGE = sys.argv[sys.argv.index('--lang') + 1]
+        except IndexError:
+            print('Usage: --lang es|en')
+            sys.exit(1)
+    if LANGUAGE not in ('es', 'en'):
+        print('Usage: --lang es|en')
+        sys.exit(1)
     if len(sys.argv) < 3:
-        print("Uso: Proxynas.py --cli <directorio_origen> <directorio_destino> [--no-transcode]")
-        print("     Proxynas.py                    (interfaz gráfica)")
+        print(_("Uso: Proxynas.py --cli <directorio_origen> <directorio_destino> [--no-transcode] [--lang es|en]"))
+        print(_("     Proxynas.py                    (interfaz gráfica)"))
         sys.exit(1)
 
     args = sys.argv[1:]
     args.remove('--cli')
+    if '--lang' in args:
+        index = args.index('--lang')
+        del args[index:index + 2]
     no_transcode = '--no-transcode' in args
     if no_transcode:
         args.remove('--no-transcode')
@@ -2781,23 +2905,29 @@ def run_cli():
     dst_dir = args[1] if len(args) > 1 else None
 
     if not os.path.isdir(src_dir):
-        print(f"Error: '{src_dir}' no existe.")
+        print(_(f"Error: '{src_dir}' no existe."))
         sys.exit(1)
 
     if not dst_dir:
-        print("Error: debes especificar un directorio de destino.")
+        print(_("Error: debes especificar un directorio de destino."))
+        sys.exit(1)
+
+    try:
+        validate_backup_destination(src_dir, dst_dir)
+    except ValueError as exc:
+        print(_(f"Error: {exc}"))
         sys.exit(1)
 
     ff_ok, ff_missing = check_ffmpeg()
     if not ff_ok:
-        print(f"Error: no se encuentra {ff_missing} en PATH.")
+        print(_(f"Error: no se encuentra {ff_missing} en PATH."))
         sys.exit(1)
 
-    p = BackupProcessor(src_dir, dst_dir, backup_braw_originals='--include-braw-originals' in sys.argv)
+    p = BackupProcessor(src_dir, dst_dir, log_callback=lambda msg: print(_(msg)), backup_braw_originals='--include-braw-originals' in sys.argv)
 
-    print(f"\nOrigen:  {src_dir}")
-    print(f"Destino: {dst_dir}")
-    print(f"Transcodificar: {'No' if no_transcode else 'Sí'}\n")
+    print(_(f"\nOrigen:  {src_dir}"))
+    print(_(f"Destino: {dst_dir}"))
+    print(_(f"Transcodificar: {'No' if no_transcode else 'Sí'}\n"))
 
     p.process_files(AUDIO_EXTENSIONS, p.process_audio)
     p.process_files(IMAGE_EXTENSIONS, p.process_images)
@@ -2808,5 +2938,5 @@ def run_cli():
     p.copy_remaining_files()
 
     s = p.stats
-    print(f"\nVídeos: {s['videos']} | Audio: {s['audio']} | Imágenes: {s['images']}")
-    print(f"Copiados: {s['copied']} | Saltados: {s['skipped']} | Errores: {s['errors']}")
+    print(_(f"\nVídeos: {s['videos']} | Audio: {s['audio']} | Imágenes: {s['images']}"))
+    print(_(f"Copiados: {s['copied']} | Saltados: {s['skipped']} | Errores: {s['errors']}"))

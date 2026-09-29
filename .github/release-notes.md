@@ -8,16 +8,23 @@ needed for `.braw` files. Jump to **Install and troubleshooting** below.
 
 ## Changelog
 
+### v0.1.12
+
+- Spanish and English UI and messages. On first launch, the app follows the
+  operating system's language and light/dark mode; manual choices are saved.
+- Image backups copy stills unchanged, without requiring an image converter.
+- Backups reject a destination inside the source folder to prevent recursive
+  copying.
+- Release builds exclude the locally imported Blackmagic RAW SDK. The build
+  stops if SDK files appear in the package; `.braw` support still requires the
+  user to import the SDK separately.
+
 ### v0.1.11
 
 - **Stills are copied instead of converted.** `.tiff`, `.rw2`, `.cr2` and
   `.arw` now reach the backup byte for byte, with their original extension.
-  They used to be re-encoded to `.png` by ImageMagick, and a machine without
-  ImageMagick either could not start `Todo` / `Audio + imágenes` at all or
-  dropped every still silently, because those extensions are excluded from
-  the plain copy pass.
-- ImageMagick is gone from the app: no dependency, no check, no diagnostics
-  line, nothing to install.
+  This also keeps stills available in `Todo` and `Audio + imágenes` without
+  requiring an image converter.
 
 ### v0.1.10
 

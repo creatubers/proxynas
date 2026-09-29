@@ -2,7 +2,7 @@
 
 Desktop tool for camera media workflows: generates lightweight proxies from
 Blackmagic RAW, video, RAW stills and audio, and can transcode a folder into a
-portable AV1 backup. Windows and Linux (the UI is in Spanish).
+portable AV1 backup. Windows and Linux (Spanish and English UI).
 
 The window shows one shared drop zone (“Carpeta vigilada”) feeding two panels:
 proxies on the left, backup on the right. The action buttons sit under the
@@ -30,6 +30,12 @@ pip install -r requirements.txt
 python Proxynas.py                                              # GUI
 python Proxynas.py --cli <source_dir> <dest_dir> [--no-transcode] [--include-braw-originals]
 ```
+
+The GUI starts in the operating system's language (Spanish or English) and
+light/dark app theme. Other languages use English. The ES/EN selector and dark
+mode control save manual choices; until then, each launch follows the system.
+The language also controls CLI messages; use `--lang en` or `--lang es` to
+override it for one CLI run.
 
 The CLI always runs with the defaults (AV1 video, audio copied as-is); the
 codec, audio and mode choices are GUI-only. `--no-transcode` copies video
@@ -138,8 +144,9 @@ which hardware encoders actually work on this machine and writes a report into
 ./build_proxynas.ps1
 ```
 
-Produces `dist/Proxynas/`. `portable/` and `vendor/` are bundled into the build
-when present.
+Produces `dist/Proxynas/`. `vendor/` is bundled when present; local
+`portable/` files, including the Blackmagic SDK, are never bundled. The build
+fails if SDK files appear in the output.
 
 ## Antivirus
 

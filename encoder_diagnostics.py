@@ -14,9 +14,19 @@ import zipfile
 
 import backup_gui
 import proxygenerator
+from localization import system_language, translate
 
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+LANGUAGE = backup_gui.load_config().get('language', system_language())
+if '--lang' in sys.argv and sys.argv.index('--lang') + 1 < len(sys.argv):
+    LANGUAGE = sys.argv[sys.argv.index('--lang') + 1]
+
+
+def _(text):
+    return translate(text, LANGUAGE)
+
+
 FFMPEG = backup_gui.FFMPEG_BIN
 FFPROBE = backup_gui.FFPROBE_BIN
 ALL_ENCODERS = (
@@ -289,8 +299,8 @@ def collect_system_info(log):
 
 def write_summary(path, report):
     lines = [
-        "Proxynas - resumen de diagnóstico",
-        f"Equipo: {report['system']['platform']}",
+        _("Proxynas - resumen de diagnóstico"),
+        _(f"Equipo: {report['system']['platform']}"),
         f"GPU: {report['system']['gpu_detected_by_app']}",
         "",
     ]
@@ -300,7 +310,7 @@ def write_summary(path, report):
         lines.append(section.upper())
         for encoder, tests in report[section].items():
             if isinstance(tests, dict) and "ok" in tests:
-                lines.append(f"  {encoder}: {'OK' if tests['ok'] else 'FALLO'}")
+                lines.append(_(f"  {encoder}: {'OK' if tests['ok'] else 'FALLO'}"))
             else:
                 passed = sum(1 for result in tests.values() if result["ok"])
                 lines.append(f"  {encoder}: {passed}/{len(tests)} OK")
@@ -311,8 +321,11 @@ def write_summary(path, report):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("braw", nargs="?", help="BRAW opcional para la prueba real")
+    parser.add_argument("braw", nargs="?", help=_("BRAW opcional para la prueba real"))
+    parser.add_argument("--lang", choices=("es", "en"), help="ES / EN")
     args = parser.parse_args()
+    global LANGUAGE
+    LANGUAGE = args.lang or LANGUAGE
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     output_root = os.path.join(SCRIPT_DIR, "diagnosticos")
@@ -321,8 +334,8 @@ def main():
     log_path = os.path.join(report_dir, "ffmpeg_completo.log")
     report = {"system": {}, "backup": {}, "proxy": {}, "braw": {}}
 
-    print("Proxynas - diagnóstico de encoders")
-    print("Puede tardar varios minutos. Los fallos de GPU no instalada son normales.\n")
+    print(_("Proxynas - diagnóstico de encoders"))
+    print(_("Puede tardar varios minutos. Los fallos de GPU no instalada son normales.\n"))
     with open(log_path, "w", encoding="utf-8", errors="replace") as log:
         report["system"] = collect_system_info(log)
         with tempfile.TemporaryDirectory(prefix="proxynas_diag_") as work_dir:
@@ -355,7 +368,7 @@ def main():
                     report["braw"]["error"] = {
                         "ok": False,
                         "exit_code": "not_found",
-                        "error_tail": f"No existe: {braw_path}",
+                        "error_tail": _(f"No existe: {braw_path}"),
                     }
 
     with open(os.path.join(report_dir, "resultados.json"), "w", encoding="utf-8") as output:
@@ -367,7 +380,7 @@ def main():
         for filename in os.listdir(report_dir):
             archive.write(os.path.join(report_dir, filename), arcname=filename)
 
-    print(f"\nTerminado.\nZIP: {zip_path}")
+    print(_(f"\nTerminado.\nZIP: {zip_path}"))
     return 0
 
 

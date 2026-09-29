@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import subprocess
+from localization import system_language, translate
 import sys
 import tempfile
 import threading
@@ -36,6 +37,13 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PORTABLE_DIR = os.path.join(SCRIPT_DIR, "portable")
 BIN_DIR = os.path.join(PORTABLE_DIR, "bin")
 SDK_DIR = os.path.join(PORTABLE_DIR, "sdk")
+
+LANGUAGE = system_language()
+
+
+def _(text):
+    return translate(text, LANGUAGE)
+
 
 def resolve_tool(name):
     """Binario portable si esta descargado; si no, el que haya en PATH."""
@@ -716,10 +724,10 @@ def find_video_files(root_dir):
 
 
 def run_proxy_creation(root_dir, codec=DEFAULT_PROXY_CODEC, accel=DEFAULT_PROXY_ACCEL):
-    print(f"\nBuscando vídeos en: {root_dir}")
+    print(_(f"\nBuscando vídeos en: {root_dir}"))
     video_files = find_video_files(root_dir)
     if not video_files:
-        print("No se encontraron vídeos para analizar.")
+        print(_("No se encontraron vídeos para analizar."))
         return
 
     # El material sin .braw no necesita el SDK, así que solo se exige si hay alguno.
@@ -730,7 +738,7 @@ def run_proxy_creation(root_dir, codec=DEFAULT_PROXY_CODEC, accel=DEFAULT_PROXY_
     )
 
     jobs = []
-    print("\nAnalizando archivos y proxies existentes...")
+    print(_("\nAnalizando archivos y proxies existentes..."))
     for source_path in video_files:
         base_name_no_ext = os.path.splitext(os.path.basename(source_path))[0]
         proxy_dir = os.path.join(os.path.dirname(source_path), PROXY_SUBDIR_NAME)
@@ -739,19 +747,19 @@ def run_proxy_creation(root_dir, codec=DEFAULT_PROXY_CODEC, accel=DEFAULT_PROXY_
         if os.path.exists(output_path):
             continue
         if not is_file_stable(source_path):
-            print(f"-> Saltando {os.path.basename(source_path)}: parece estar en transferencia.")
+            print(_(f"-> Saltando {os.path.basename(source_path)}: parece estar en transferencia."))
             continue
         jobs.append((source_path, output_path))
 
     if not jobs:
-        print("\nTodo actualizado. No hay vídeos nuevos que procesar.")
+        print(_("\nTodo actualizado. No hay vídeos nuevos que procesar."))
         return
 
-    print(f"\nSe procesarán {len(jobs)} vídeos nuevos.")
+    print(_(f"\nSe procesarán {len(jobs)} vídeos nuevos."))
     for index, (source_path, output_path) in enumerate(jobs, start=1):
         print("-" * 70)
-        print(f"TRABAJO {index}/{len(jobs)}: {os.path.basename(source_path)}")
-        print(f"Destino: {output_path}")
+        print(_(f"TRABAJO {index}/{len(jobs)}: {os.path.basename(source_path)}"))
+        print(_(f"Destino: {output_path}"))
         print("-" * 70)
 
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -760,21 +768,29 @@ def run_proxy_creation(root_dir, codec=DEFAULT_PROXY_CODEC, accel=DEFAULT_PROXY_
                 create_braw_proxy(source_path, output_path, codec, accel)
             else:
                 create_standard_proxy(source_path, output_path, codec, accel)
-            print(f"\nÉXITO: proxy creado para {os.path.basename(source_path)}")
+            print(_(f"\nÉXITO: proxy creado para {os.path.basename(source_path)}"))
         except Exception as exc:
             remove_partial_output(output_path)
             if os.path.exists(output_path):
                 os.remove(output_path)
-            print(f"\nERROR: {exc}")
+            print(_(f"\nERROR: {exc}"))
 
-    print("\n--- Proceso de creación de proxies finalizado ---")
+    print(_("\n--- Proceso de creación de proxies finalizado ---"))
 
 
 if __name__ == "__main__":
     try:
-        print("--- Generador de Proxies Portable BRAW SDK ---")
-        print(f"Directorio de trabajo: {SCRIPT_DIR}")
+        config_path = os.path.join(SCRIPT_DIR, 'proxynas_config.json')
+        try:
+            with open(config_path, encoding='utf-8') as config_file:
+                LANGUAGE = json.load(config_file).get('language', system_language())
+        except (OSError, ValueError):
+            pass
+        if '--lang' in sys.argv and sys.argv.index('--lang') + 1 < len(sys.argv):
+            LANGUAGE = sys.argv[sys.argv.index('--lang') + 1]
+        print(_("--- Generador de Proxies Portable BRAW SDK ---"))
+        print(_(f"Directorio de trabajo: {SCRIPT_DIR}"))
         run_proxy_creation(SCRIPT_DIR)
     except Exception as exc:
-        print(f"\nERROR CRÍTICO: {exc}")
+        print(_(f"\nERROR CRÍTICO: {exc}"))
         sys.exit(1)
