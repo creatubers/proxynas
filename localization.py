@@ -12,7 +12,7 @@ def system_language():
     return 'es' if locale_name.split(':', 1)[0].lower().startswith('es') else 'en'
 
 EN = {
-    'El SDK de Blackmagic RAW no se puede distribuir con Proxynas, así que hay que\ndescargarlo una vez desde la web oficial de Blackmagic:': 'The Blackmagic RAW SDK cannot be bundled with Proxynas. Download it from the official Blackmagic website:',
+    'Proxynas no incluye el SDK de Blackmagic RAW. Descárgalo una vez\ndesde la web oficial de Blackmagic:': 'Proxynas does not include the Blackmagic RAW SDK. Download it from the official Blackmagic website:',
     '1. Abre esa página y descarga el SDK para Windows.': '1. Open that page and download the Windows SDK.',
     '2. Vuelve a Proxynas y pulsa «Importar SDK BRAW (zip)».': '2. Return to Proxynas and click “Import BRAW SDK (zip)”.',
     '3. Elige el zip descargado: Proxynas copiará los ficheros necesarios.': '3. Choose the downloaded zip: Proxynas will copy the required files.',

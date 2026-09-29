@@ -1,8 +1,8 @@
 Windows 64-bit build (portable, no installer). Unzip it and run `Proxynas.exe`.
 
-FFmpeg is downloaded into the app folder on first launch. The Blackmagic RAW
-SDK is not downloaded (Blackmagic does not allow redistributing it) and is only
-needed for `.braw` files. Jump to **Install and troubleshooting** below.
+FFmpeg is downloaded into the app folder on first launch. Proxynas does not
+include or download the Blackmagic RAW SDK; it is only needed for `.braw` files.
+Jump to **Install and troubleshooting** below.
 
 ---
 
@@ -126,9 +126,9 @@ Nothing is downloaded if you already have `ffmpeg` and `ffprobe` on `PATH`.
 
 ### Blackmagic RAW
 
-`.braw` support is not bundled and is not downloaded: Blackmagic does not allow
-redistributing the SDK. Everything except `.braw` works without it. When you
-point Proxynas at a folder that contains `.braw`, it offers to open
+Proxynas does not include or download the Blackmagic RAW SDK. Everything except
+`.braw` works without it. When you point Proxynas at a folder that contains
+`.braw`, it offers to open
 
   https://www.blackmagicdesign.com/support/latest-download/braw-sdk/windows
 

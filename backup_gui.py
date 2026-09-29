@@ -102,8 +102,8 @@ BRAW_SDK_URL = 'https://www.blackmagicdesign.com/support/latest-download/braw-sd
 CREATUBERS_URL = 'https://www.creatubers.com'
 APOYO_URL = 'https://buy.stripe.com/dRm3cweXjfLx8rk2em4ZG01'
 BRAW_SDK_HELP = (
-    'El SDK de Blackmagic RAW no se puede distribuir con Proxynas, así que hay que\n'
-    'descargarlo una vez desde la web oficial de Blackmagic:\n\n'
+    'Proxynas no incluye el SDK de Blackmagic RAW. Descárgalo una vez\n'
+    'desde la web oficial de Blackmagic:\n\n'
     f'  {BRAW_SDK_URL}\n\n'
     '  1. Abre esa página y descarga el SDK para Windows.\n'
     '  2. Vuelve a Proxynas y pulsa «Importar SDK BRAW (zip)».\n'
