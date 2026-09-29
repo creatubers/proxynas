@@ -1,177 +1,46 @@
 # Proxynas
 
-Desktop tool for camera media workflows: generates lightweight proxies from
-Blackmagic RAW, video, RAW stills and audio, and can transcode a folder into a
-portable AV1 backup. Windows and Linux (Spanish and English UI).
+Proxynas crea proxies de vídeo y hace copias de seguridad de carpetas con material audiovisual. La versión distribuida para Windows es portable: se descomprime y se ejecuta, sin instalador.
 
-The window shows one shared drop zone (“Carpeta vigilada”) feeding two panels:
-proxies on the left, backup on the right. The action buttons sit under the
-panels instead of inside the backup card, so `Iniciar backup`, `Cancelar` and
-`Salir` stay visible when the window is small. The version is shown in the
-title bar and next to the app name, the header has a button to minimize to the
-notification area, and the footer links to the authors and to a donation page.
+## Descargar y usar
 
-Hardware encoders used when available: `av1_nvenc`, `av1_qsv`, `av1_amf`,
-`hevc_nvenc`, `hevc_qsv`, `hevc_amf`, falling back to `libx265` / software AV1.
+1. Descarga el ZIP de la [última versión](https://github.com/creatubers/proxynas/releases/latest).
+2. Extrae la carpeta completa y abre `Proxynas.exe`.
+3. Selecciona la carpeta de origen. Para el backup, elige también una carpeta de destino fuera del origen.
 
-## Requirements
+La interfaz está en español e inglés. Si no has elegido idioma o modo claro/oscuro en la aplicación, utiliza los ajustes del sistema al arrancar.
 
-- Python 3.10+
-- FFmpeg (see below)
-- For `.braw` files only: the Blackmagic RAW SDK (see below)
+## Qué hace
 
-```
-pip install -r requirements.txt
-```
+- **Proxies:** crea archivos H.264 o H.265 en una carpeta `Proxy` junto a los vídeos originales. El códec y el uso de CPU o GPU se eligen en la aplicación.
+- **Backup:** copia o transcodifica vídeo y audio según las opciones elegidas. Las imágenes `.tiff`, `.rw2`, `.cr2` y `.arw` se copian sin convertirlas ni modificar su contenido.
+- **BRAW:** para procesar archivos `.braw` necesitas importar por separado el SDK de Blackmagic RAW. Proxynas muestra la opción de importación cuando hace falta.
 
-## Run
+## Dependencias
 
-```
-python Proxynas.py                                              # GUI
-python Proxynas.py --cli <source_dir> <dest_dir> [--no-transcode] [--include-braw-originals]
-```
+Proxynas necesita `ffmpeg` y `ffprobe`. En Windows intenta descargarlos al arrancar si no están disponibles. También puedes instalarlos en `PATH` o colocarlos en `portable/bin/` junto a la aplicación.
 
-The GUI starts in the operating system's language (Spanish or English) and
-light/dark app theme. Other languages use English. The ES/EN selector and dark
-mode control save manual choices; until then, each launch follows the system.
-The language also controls CLI messages; use `--lang en` or `--lang es` to
-override it for one CLI run.
+El SDK propietario de Blackmagic RAW **no está incluido** en el repositorio ni en el ZIP de la release. Si trabajas con `.braw`, descárgalo desde [Blackmagic Design](https://www.blackmagicdesign.com/support/latest-download/braw-sdk/windows) e importa el ZIP desde la aplicación. El decodificador `braw_decode.exe` incluido en la versión Windows es parte de Proxynas, no del SDK.
 
-The CLI always runs with the defaults (AV1 video, audio copied as-is); the
-codec, audio and mode choices are GUI-only. `--no-transcode` copies video
-instead of converting it, and `--include-braw-originals` also copies the raw
-`.braw` sources.
+## Ejecutar desde el código fuente
 
-## FFmpeg
+Con Python 3.12 y las dependencias de `requirements.txt`:
 
-On Windows, Proxynas downloads a current FFmpeg build into `portable/bin/` on
-first launch. If the download cannot reach GitHub, it says so and offers to
-open the download page; unzip that build and copy `ffmpeg.exe` and
-`ffprobe.exe` from its `bin\` folder into `portable/bin/`. Otherwise put
-`ffmpeg` and `ffprobe` on `PATH`, or drop the binaries in `portable/bin/`.
-
-## Blackmagic RAW
-
-The Blackmagic RAW SDK is **not** included in this repository and is **not**
-downloaded automatically: Blackmagic does not allow redistributing it and the
-download requires accepting their license.
-
-Only `.braw` files need it. When you point Proxynas at a folder that contains
-`.braw` files and the SDK is missing, it shows a dialog with the download page
-(`https://www.blackmagicdesign.com/support/latest-download/braw-sdk/windows`) and
-offers to import the zip you downloaded. Folders without `.braw` are never
-checked, so it does not nag over FFmpeg-only material. That check only looks a
-few levels deep (camera cards are shallow) to avoid walking a whole archive; if
-it misses a deeply nested `.braw`, the proxy or transcode run that needs it
-shows the same dialog. Importing copies `BlackmagicRawAPI.dll`,
-`DecoderCUDA.dll`, `DecoderOpenCL.dll` and the `InstructionSetServicesAVX*.dll`
-files into `portable/sdk/`; the **"Importar SDK BRAW (zip)"** button in the
-proxies panel does the same thing by hand. Files are matched by name and the
-x64 ones are preferred. Import a current SDK: the bundled decoder is compiled
-against the Blackmagic RAW 6.0 interfaces, and an older import stops with a
-clear message instead of decoding.
-
-The Windows download is a zip of `.msi` installers rather than loose DLLs, so
-Proxynas extracts them with `msiexec /a` (nothing is installed) and takes the
-x64 copies, never the ARM64 ones.
-
-`.braw` also needs `braw_decode.exe` in `portable/bin/`. It is **not** part of
-the SDK: it is Proxynas's own decoder, and the Windows builds already include
-it. It reaches the SDK through COM interfaces, so it must be compiled against
-the interfaces that SDK declares. After an SDK update, rebuild it with
-`tools/braw_decode/build_braw_decode.bat "<SDK>\Win\Include"` (needs the
-Visual Studio C++ build tools; the script regenerates the interface header from
-the SDK's IDL with MIDL and refreshes `portable/bin/braw_decode.exe`).
-
-Everything else works without it: non-BRAW media is handled by FFmpeg alone.
-`python test_braw_sdk_import.py` checks the zip import, the folder warning and
-the proxy encoder selection.
-
-## Proxies
-
-The proxies panel chooses the codec (`H.265` or `H.264`) and the acceleration
-(`GPU (hardware)` or `CPU (software)`). GPU is the default and is only offered
-when a hardware encoder for that codec was validated on this machine; the
-encoder actually used is shown under the radios.
-
-Detection is not a list lookup. Every candidate is run against a synthetic
-1080p clip, because `ffmpeg -encoders` lists encoders the machine cannot
-really use: `h264_nvenc` rejects 10-bit input on some GPUs, and `hevc_qsv` /
-`hevc_amf` are listed on machines with no Intel/AMD device. Every proxy is
-10-bit whatever the codec, so an H.264 and an H.265 proxy of the same clip
-match. NVENC's H.264 is 8-bit only, so on NVIDIA cards the H.264 GPU option
-is not offered and H.264 runs on `libx264` (CPU); `hevc_nvenc` has no such
-limit.
-`ffmpeg` and `ffprobe` come from `portable/bin/` when present and from `PATH`
-otherwise.
-
-Proxies land in a `Proxy/` subfolder next to each source file, and `.MOV`
-sources keep the uppercase extension. A registry (`proxynas_registry.json`)
-reconciles them run to run: moved files are re-linked, deleted ones are
-reported, and entries that collide land in `Proxy/_orphan/`. `Modo live`
-re-checks the folder every 15 seconds while it is on.
-
-The status box under the codec radios and the activity log are plain text, so
-you can select and copy an error verbatim.
-
-## Backup
-
-The backup panel copies or transcodes a folder into a destination tree. The
-mode radios choose what to process: `Todo`, `Solo vídeo`, `Audio + imágenes`
-or `Otros`. Audio is either copied (`No transcodificar`) or converted to
-`WAV PCM` (24-bit), `AAC M4A` (192 kbit/s) or `Opus MP4`, written in the
-destination as `<name>.<AUDIO|audio>.<ext>`. Stills (`.tiff .rw2 .cr2 .arw`)
-are copied byte for byte, never converted. `Convertir vídeo` offers `AV1
-hardware`, `H.265 hardware` and `H.265 software`; a source already in the
-target family is copied instead of re-encoded, and if the chosen encoder is
-unavailable the original is copied and counted as an error. Everything else
-is copied as-is (`Thumbs.db` is skipped).
-
-`Incluir originales BRAW en el backup (muy pesado)` also writes the raw `.braw`
-clips, scaled down to at most 1920 px wide. `Modo live` re-runs the backup
-every 30 seconds while it is on, and `Apagar al terminar` shuts the machine
-down when the run finishes.
-
-## Diagnostics
-
-`Ejecutar diagnostico encoders.bat` (or `python encoder_diagnostics.py`) probes
-which hardware encoders actually work on this machine and writes a report into
-`diagnosticos/`.
-
-## Build
-
-```
-./build_proxynas.ps1
+```powershell
+python -m pip install -r requirements.txt
+python Proxynas.py
 ```
 
-Produces `dist/Proxynas/`. `vendor/` is bundled when present; local
-`portable/` files, including the Blackmagic SDK, are never bundled. The build
-fails if SDK files appear in the output.
+El modo de línea de comandos permite ejecutar un backup:
 
-## Antivirus
+```powershell
+python Proxynas.py --cli <origen> <destino> [--no-transcode] [--include-braw-originals] [--lang es|en]
+```
 
-The Windows build is unsigned, so expect three false positives. None of them
-is a real detection, and only a code-signing certificate removes them for
-good. The long walk-through, with the Spanish UI paths, is on the
-[releases page](https://github.com/creatubers/proxynas/releases).
+Para crear el paquete de Windows, ejecuta `./build_proxynas.ps1`. El build no empaqueta el directorio `portable/` local y se detiene si encuentra archivos del SDK en el resultado.
 
-- **Defender deletes `Proxynas.exe` while unzipping** (usually a `Wacatac`
-  heuristic such as `Trojan:Win32/Wacatac.H!ml`). Exclude the folder *before*
-  you extract: Windows Security -> Virus & threat protection -> Manage
-  settings -> Exclusions -> Add or remove exclusions -> Add -> Folder.
-  Allowing the detection afterwards does not bring a quarantined file back.
-- **SmartScreen: "Windows protected your PC".** *More info* -> *Run anyway*,
-  or drop the mark that triggers it first with
-  `Unblock-File .\Proxynas-win64.zip`.
-- **Chrome blocks the download.** `chrome://downloads` -> the blocked item's
-  menu -> keep it, or skip the browser:
-  `curl.exe -L -o Proxynas-win64.zip <release url>`. Use `curl.exe`, not
-  `curl`: in Windows PowerShell 5.1 `curl` is an alias for
-  `Invoke-WebRequest` and those flags fail.
+## Estado de la distribución
 
-## License
+Los ejecutables de Windows no están firmados digitalmente. Windows o el navegador pueden mostrar avisos o bloquear una descarga; la firma digital y la reputación del archivo son asuntos pendientes. Consulta el [changelog y las descargas](https://github.com/creatubers/proxynas/releases) para cada versión.
 
-MIT — see `LICENSE`. FFmpeg and the Blackmagic RAW SDK are separate products
-with their own licenses and are not covered by it. Proxynas is not
-affiliated with or endorsed by Blackmagic Design, and Blackmagic RAW is a
-trademark of Blackmagic Design Pty. Ltd.
+El código de Proxynas se distribuye bajo la licencia [MIT](LICENSE). FFmpeg y el SDK de Blackmagic RAW son productos separados con sus propias licencias.
