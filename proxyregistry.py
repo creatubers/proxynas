@@ -15,6 +15,7 @@ ORPHAN_THRESHOLD_SCANS = 10
 SPARSE_SCAN_RATIO = 0.5
 FFPROBE_TIMEOUT = 5
 BRAW_INFO_TIMEOUT = 10
+COPY_GRACE_SECONDS = 60
 
 PROXY_CANDIDATE_EXTENSIONS = {'.braw', '.mov', '.mxf'}
 SKIP_DIRS = {'Proxy', '_orphan', 'portable', 'tools', '__pycache__', '.git', '.agents', '.codex'}
@@ -89,7 +90,7 @@ class ProxyRegistry:
     def reconcile(self, watch_folder, proxy_ext_fn=None):
         """Compara el estado actual con el registro. Devuelve un resumen dict."""
         watch_folder = os.path.abspath(watch_folder)
-        summary = {'moves': 0, 'orphans': 0, 'news': 0, 'skipped': None}
+        summary = {'moves': 0, 'orphans': 0, 'news': 0, 'skipped': None, 'deferred': set()}
 
         if not os.path.isdir(watch_folder):
             summary['skipped'] = 'no_dir'
@@ -130,8 +131,14 @@ class ProxyRegistry:
 
         consumed_disappeared = set()
         consumed_appeared = set()
-        for new_path in sorted(appeared):
+        pending_moves = appeared | {
+            path for path in current_paths & previous_paths
+            if entries[path].get('copy_of') in disappeared
+        }
+        for new_path in sorted(pending_moves):
             new_meta = current[new_path]
+            if new_path not in appeared:
+                new_meta['duration'] = entries[new_path].get('duration')
             match = self._find_match(entries, disappeared - consumed_disappeared, new_meta)
             if match is None:
                 continue
@@ -151,6 +158,16 @@ class ProxyRegistry:
                 )
             consumed_disappeared.add(match)
             consumed_appeared.add(new_path)
+            if new_path in entries:
+                entries[new_path].pop('copy_of', None)
+                entries[new_path].pop('copy_seen_at', None)
+
+        copied_from = {}
+        for new_path in appeared - consumed_appeared:
+            match = self._find_match(entries, current_paths & previous_paths,
+                                     current[new_path])
+            if match and os.path.exists(entries[match].get('proxy_path', '')):
+                copied_from[new_path] = match
 
         for path in disappeared - consumed_disappeared:
             entry = entries[path]
@@ -181,9 +198,24 @@ class ProxyRegistry:
                     'missing_count': 0,
                     'proxy_path': proxy_path,
                 }
+                if path in copied_from:
+                    entries[path]['copy_of'] = copied_from[path]
+                    entries[path]['copy_seen_at'] = now
 
         for path in consumed_disappeared:
             entries.pop(path, None)
+
+        for path in current_paths:
+            entry = entries[path]
+            original = entry.get('copy_of')
+            if not original:
+                continue
+            if os.path.exists(entry['proxy_path']):
+                entry.pop('copy_of', None)
+                entry.pop('copy_seen_at', None)
+            elif (original in current_paths and original in entries
+                  and now - entry['copy_seen_at'] < COPY_GRACE_SECONDS):
+                summary['deferred'].add(path)
 
         summary['news'] = len(appeared - consumed_appeared)
 
@@ -232,29 +264,24 @@ class ProxyRegistry:
         basename = new_meta['basename']
         size = new_meta['size']
         duration = new_meta.get('duration')
-
-        if duration is None:
-            return None
-
         matches = []
         for path in candidates:
             entry = entries[path]
-            if entry.get('basename') != basename:
-                continue
-            if entry.get('size') != size:
-                continue
-            entry_duration = entry.get('duration')
-            if entry_duration is None:
-                continue
-            if abs(entry_duration - duration) > 0.01:
-                continue
-            matches.append(path)
+            if (entry.get('basename') == basename and entry.get('size') == size
+                    and os.path.splitext(path)[1].lower() == new_meta['ext']):
+                matches.append(path)
 
-        if not matches:
-            return None
+        if len(matches) == 1:
+            old_duration = entries[matches[0]].get('duration')
+            if duration is None or old_duration is None or abs(old_duration - duration) <= 0.01:
+                return matches[0]
 
-        matches.sort(key=lambda p: entries[p].get('last_seen', 0), reverse=True)
-        return matches[0]
+        if duration is not None:
+            timed = [path for path in matches if entries[path].get('duration') is not None
+                     and abs(entries[path]['duration'] - duration) <= 0.01]
+            if len(timed) == 1:
+                return timed[0]
+        return None
 
     def _compute_proxy_path(self, source_path, proxy_ext_fn=None):
         directory = os.path.dirname(source_path)

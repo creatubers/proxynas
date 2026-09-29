@@ -2202,10 +2202,10 @@ class BackupApp:
         except Exception:
             return False
 
-    def _find_pending_proxy_jobs(self):
+    def _find_pending_proxy_jobs(self, deferred_paths=()):
         jobs = []
         for source_path, proxy_path in self._iter_proxy_candidates() or []:
-            if not os.path.exists(proxy_path):
+            if source_path not in deferred_paths and not os.path.exists(proxy_path):
                 jobs.append((source_path, proxy_path))
         return jobs
 
@@ -2319,6 +2319,7 @@ class BackupApp:
 
     def _run_proxy_creation_for_watch_folder(self):
         try:
+            summary = {}
             try:
                 summary = self.registry.reconcile(
                     self.watch_folder_var.get().strip(),
@@ -2340,10 +2341,13 @@ class BackupApp:
                 label = braw_proxy.PROXY_CODEC_LABELS.get(codec, codec)
                 raise RuntimeError(f"Sin encoder {label} para proxies: {encoder_result.get('reason')}")
             self._log(f"Encoder de proxy: {encoder_result['encoder']}")
-            jobs = self._find_pending_proxy_jobs()
+            jobs = self._find_pending_proxy_jobs(summary.get('deferred', ()))
             if not jobs:
-                self.root.after(0, lambda: self.proxy_status_var.set('Todo actualizado. No hay proxies pendientes.'))
-                self._log('Proxies: todo actualizado.')
+                if summary.get('deferred'):
+                    self.root.after(0, lambda: self.proxy_status_var.set('Esperando a confirmar si los clips se han movido...'))
+                else:
+                    self.root.after(0, lambda: self.proxy_status_var.set('Todo actualizado. No hay proxies pendientes.'))
+                    self._log('Proxies: todo actualizado.')
                 return
             self._log(f'Proxies pendientes: {len(jobs)}')
             for index, (source_path, proxy_path) in enumerate(jobs, start=1):
