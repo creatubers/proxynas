@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import time
+from collections import Counter
 from pathlib import Path
 
 
@@ -162,12 +163,73 @@ class ProxyRegistry:
                 entries[new_path].pop('copy_of', None)
                 entries[new_path].pop('copy_seen_at', None)
 
+        # Recupera parejas source/proxy existentes antes de buscar copias en
+        # una instalacion sin historial.
+        for path in appeared - consumed_appeared:
+            proxy_path = self._compute_proxy_path(path, proxy_ext_fn)
+            if os.path.exists(proxy_path):
+                entries[path] = {
+                    'basename': current[path]['basename'],
+                    'size': current[path]['size'],
+                    'duration': current[path].get('duration'),
+                    'last_seen': now,
+                    'missing_count': 0,
+                    'proxy_path': proxy_path,
+                }
+
         copied_from = {}
         for new_path in appeared - consumed_appeared:
-            match = self._find_match(entries, current_paths & previous_paths,
+            if os.path.exists(self._compute_proxy_path(new_path, proxy_ext_fn)):
+                continue
+            match = self._find_match(entries, (current_paths & entries.keys()) - {new_path},
                                      current[new_path])
             if match and os.path.exists(entries[match].get('proxy_path', '')):
                 copied_from[new_path] = match
+
+        # Una instalacion nueva puede no tener el registro de la anterior.
+        # Recupera solo proxies cuyo clip ya no esta en su carpeta original.
+        unmatched = appeared - consumed_appeared - copied_from.keys()
+        if unmatched:
+            orphan_proxies = {}
+            source_names = {
+                (os.path.dirname(path), current[path]['basename'].casefold())
+                for path in current_paths
+            }
+            for dirpath, dirnames, filenames in os.walk(watch_folder):
+                if os.path.basename(dirpath) == PROXY_SUBDIR:
+                    dirnames[:] = []
+                    parent = os.path.dirname(dirpath)
+                    for filename in filenames:
+                        stem, ext = os.path.splitext(filename)
+                        if ext.lower() == '.mov' and (parent, stem.casefold()) not in source_names:
+                            orphan_proxies.setdefault(filename.casefold(), []).append(
+                                os.path.join(dirpath, filename))
+                else:
+                    dirnames[:] = [d for d in dirnames if d == PROXY_SUBDIR or d not in SKIP_DIRS]
+
+            target_names = Counter(
+                os.path.basename(self._compute_proxy_path(path, proxy_ext_fn)).casefold()
+                for path in unmatched
+            )
+            for new_path in sorted(unmatched):
+                new_proxy = self._compute_proxy_path(new_path, proxy_ext_fn)
+                name = os.path.basename(new_proxy).casefold()
+                candidates = orphan_proxies.get(name, ())
+                if (target_names[name] != 1 or len(candidates) != 1
+                        or os.path.exists(new_proxy)):
+                    continue
+                old_proxy = candidates[0]
+                source_duration = current[new_path].get('duration')
+                proxy_duration = (_probe_duration_ffprobe(self.ffprobe_bin, old_proxy)
+                                  if os.path.isfile(self.ffprobe_bin) else None)
+                if (source_duration is not None and proxy_duration is not None
+                        and abs(source_duration - proxy_duration) > 0.1):
+                    continue
+                if self._attempt_proxy_move(old_proxy, new_path,
+                                            {'proxy_path': old_proxy}, proxy_ext_fn) == 'moved':
+                    summary['moves'] += 1
+                    consumed_appeared.add(new_path)
+                    self.log(f'Proxy recuperado de otra instalacion: {os.path.basename(new_path)}')
 
         for path in disappeared - consumed_disappeared:
             entry = entries[path]

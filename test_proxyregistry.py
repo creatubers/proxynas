@@ -81,7 +81,47 @@ def test_copy_kept_gets_own_proxy_job():
         assert not registry.reconcile(folder)['deferred']
 
 
+def test_fresh_install_recovers_old_proxies():
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        old_proxy_dir = root / 'Proxy'
+        old_proxy_dir.mkdir()
+        for name in ('one', 'two'):
+            (old_proxy_dir / f'{name}.mov').write_bytes(name.encode())
+            destination = root / name / f'{name}.braw'
+            destination.parent.mkdir()
+            destination.write_bytes(name.encode())
+
+        registry = ProxyRegistry(str(root / 'new-registry.json'), ffprobe_bin='missing')
+        result = registry.reconcile(folder)
+        assert result['moves'] == 2
+        for name in ('one', 'two'):
+            assert not (old_proxy_dir / f'{name}.mov').exists()
+            assert (root / name / 'Proxy' / f'{name}.mov').read_bytes() == name.encode()
+
+
+def test_fresh_install_copy_then_delete():
+    with tempfile.TemporaryDirectory() as folder:
+        root = Path(folder)
+        source = root / 'clip.braw'
+        source.write_bytes(b'clip')
+        old_proxy = root / 'Proxy' / 'clip.mov'
+        old_proxy.parent.mkdir()
+        old_proxy.write_bytes(b'proxy')
+        destination = root / 'scene' / 'clip.braw'
+        destination.parent.mkdir()
+        shutil.copy2(source, destination)
+
+        registry = ProxyRegistry(str(root / 'new-registry.json'), ffprobe_bin='missing')
+        assert registry.reconcile(folder)['deferred'] == {str(destination)}
+        source.unlink()
+        assert registry.reconcile(folder)['moves'] == 1
+        assert (destination.parent / 'Proxy' / 'clip.mov').read_bytes() == b'proxy'
+
+
 if __name__ == '__main__':
     test_move_without_duration()
     test_copy_then_delete_between_scans()
     test_copy_kept_gets_own_proxy_job()
+    test_fresh_install_recovers_old_proxies()
+    test_fresh_install_copy_then_delete()
