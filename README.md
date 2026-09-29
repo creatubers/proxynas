@@ -36,4 +36,8 @@ El modo de línea de comandos permite ejecutar un backup:
 python Proxynas.py --cli <origen> <destino> [--no-transcode] [--include-braw-originals] [--lang es|en]
 ```
 
+## Contribuir
+
+Se aceptan contribuciones mediante issues y pull requests. Consulta [CONTRIBUTING.md](CONTRIBUTING.md) para preparar el entorno, ejecutar las comprobaciones y enviar cambios.
+
 El código de Proxynas se distribuye bajo la licencia [MIT](LICENSE). FFmpeg y el SDK de Blackmagic RAW son productos separados con sus propias licencias.
