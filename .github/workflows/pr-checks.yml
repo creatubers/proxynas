@@ -1,0 +1,39 @@
+name: PR checks
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Compile Python sources
+        run: python -m compileall -q .
+
+      - name: Backup path checks
+        run: python test_backup_paths.py
+
+      - name: Image backup checks
+        run: python test_image_backup.py
+
+      - name: Localization checks
+        run: python test_localization.py
