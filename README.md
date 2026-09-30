@@ -1,4 +1,16 @@
-# Proxynas
+<p align="center">
+  <img src="proxynas.png" alt="Proxynas icon" width="180">
+</p>
+
+<h1 align="center">Proxynas</h1>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
+  <a href="#requirements"><img src="https://img.shields.io/badge/OS-Windows%2010%20%2F%2011-0078D4" alt="OS: Windows 10 / 11"></a>
+  <a href="#run-from-source"><img src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&amp;logoColor=white" alt="Python: 3.12"></a>
+  <a href="https://github.com/creatubers/proxynas/releases/latest"><img src="https://img.shields.io/github/v/release/creatubers/proxynas?color=8A2BE2" alt="Latest release"></a>
+  <a href="https://github.com/creatubers/proxynas/releases"><img src="https://img.shields.io/github/downloads/creatubers/proxynas/total?color=F59E0B" alt="Total downloads"></a>
+</p>
 
 **EN** | [ES](README.es.md)
 
