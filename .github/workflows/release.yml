@@ -39,10 +39,17 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
           $tag = "${{ github.ref_name }}"
+          $changelog = Get-Content .github/release-notes.md -Raw
+          $section = [regex]::Match($changelog, '(?ms)^### ' + [regex]::Escape($tag) + '\r?\n(.*?)(?=^### |^---\r?$|\z)')
+          if (-not $section.Success -or -not $section.Groups[1].Value.Trim()) {
+            throw "Missing changelog for $tag"
+          }
+          $notes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          Set-Content -LiteralPath $notes -Value $section.Groups[1].Value.Trim() -Encoding utf8
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag Proxynas-win64.zip --clobber
-            gh release edit $tag --notes-file .github/release-notes.md
+            gh release edit $tag --notes-file $notes
           } else {
-            gh release create $tag Proxynas-win64.zip --title "Proxynas $tag" --notes-file .github/release-notes.md
+            gh release create $tag Proxynas-win64.zip --title "Proxynas $tag" --notes-file $notes
           }
