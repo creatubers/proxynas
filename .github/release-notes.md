@@ -8,6 +8,12 @@ Jump to **Install and troubleshooting** below.
 
 ## Changelog
 
+### v0.1.13
+
+- Recover proxies from previous installations.
+- Avoid duplicate proxies during copy-then-delete moves.
+- English README with a link to the Spanish documentation.
+
 ### v0.1.12
 
 - Spanish and English UI and messages. On first launch, the app follows the

@@ -128,7 +128,7 @@ FFPROBE_BIN = braw_proxy.resolve_tool('ffprobe')
 APP_NAME = 'Proxynas'
 # Fuente unica en Python: version_info.txt solo lo lee PyInstaller al construir
 # el .exe, asi que al subir version hay que tocar los dos sitios.
-APP_VERSION = '0.1.12'
+APP_VERSION = '0.1.13'
 APP_SUBTITLE = 'Proxies Blackmagic RAW y backup AV1 portable'
 ICON_PATH = os.path.join(SCRIPT_DIR, 'proxynas.png')
 CONFIG_PATH = os.path.join(SCRIPT_DIR, 'proxynas_config.json')
